@@ -35,7 +35,40 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.loading { display: grid; place-items: center; min-height: 100vh; color: var(--muted); font-weight: 500; }
+/* ---- Branded loading screen ---- */
+.app-loader {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, #f9f4ec 0%, var(--bg) 55%, var(--bg-2) 100%);
+}
+.loader-stack { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.loader-ring { position: relative; width: 80px; height: 80px; display: grid; place-items: center; }
+.loader-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+.loader-badge {
+  width: 56px; height: 56px;
+  border-radius: 17px;
+  display: grid; place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 20px rgba(239, 115, 34, 0.4);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+.loader-text { color: var(--muted); font-weight: 600; font-size: 0.95rem; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+@media (prefers-reduced-motion: reduce) {
+  .loader-ring::before, .loader-badge { animation: none; }
+}
 
 .app {
   max-width: 760px;

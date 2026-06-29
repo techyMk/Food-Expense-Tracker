@@ -1,9 +1,23 @@
 import { useEffect, useState } from "react";
+import { Utensils } from "lucide-react";
 import { api } from "./api";
 import { ToastProvider } from "./context/ToastContext";
 import SetupBanner from "./components/SetupBanner";
 import AuthView from "./components/AuthView";
 import Tracker from "./components/Tracker";
+
+function Loader() {
+  return (
+    <div className="app-loader">
+      <div className="loader-stack">
+        <div className="loader-ring">
+          <span className="loader-badge"><Utensils size={26} strokeWidth={2.2} /></span>
+        </div>
+        <div className="loader-text">Loading your meals…</div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [phase, setPhase] = useState("loading"); // loading | setup | auth | app
@@ -34,7 +48,7 @@ export default function App() {
     })();
   }, []);
 
-  if (phase === "loading") return <div className="loading">Loading…</div>;
+  if (phase === "loading") return <Loader />;
   if (phase === "setup") return <SetupBanner />;
 
   return (
