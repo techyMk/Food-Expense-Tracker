@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Utensils, SlidersHorizontal, LogOut, Check, X } from "lucide-react";
+import { Utensils, SlidersHorizontal, LogOut, Check, X, Ban } from "lucide-react";
 import { api } from "../api";
 import { useToast } from "../context/ToastContext";
 import {
@@ -13,11 +13,13 @@ import MealRow from "./MealRow";
 import RatesPanel from "./RatesPanel";
 import MonthSummary from "./MonthSummary";
 import MonthlyReport from "./MonthlyReport";
+import ReminderToggle from "./ReminderToggle";
 
 export default function Tracker({ user, onSignOut }) {
   const toast = useToast();
   const [rates, setRates] = useState(() => cloneRates(FACTORY_RATES));
   const [days, setDays] = useState({}); // { "YYYY-MM-DD": { morning: {taken, amount}, ... } }
+  const [noMealSet, setNoMealSet] = useState(() => new Set()); // dates with no meals provided
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [showSettings, setShowSettings] = useState(false);
   const [view, setView] = useState("daily"); // "daily" | "report"
@@ -63,7 +65,7 @@ export default function Tracker({ user, onSignOut }) {
     if (loadedMonths.current.has(tag)) return;
     loadedMonths.current.add(tag);
     try {
-      const { entries } = await api.getMeals(tag);
+      const { entries, noMeal } = await api.getMeals(tag);
       setDays((prev) => {
         const next = { ...prev };
         for (const row of entries || []) {
@@ -71,6 +73,9 @@ export default function Tracker({ user, onSignOut }) {
         }
         return next;
       });
+      if (noMeal && noMeal.length) {
+        setNoMealSet((prev) => { const n = new Set(prev); noMeal.forEach((d) => n.add(d)); return n; });
+      }
     } catch {
       loadedMonths.current.delete(tag);
       toast("Couldn't load that month.");
@@ -137,6 +142,15 @@ export default function Tracker({ user, onSignOut }) {
     }
   }
 
+  function toggleNoMeal(value) {
+    setNoMealSet((prev) => {
+      const n = new Set(prev);
+      if (value) n.add(selectedDate); else n.delete(selectedDate);
+      return n;
+    });
+    api.setDayStatus(selectedDate, value).catch(() => toast("Couldn't save — try again."));
+  }
+
   // ---- Monthly report ----
   async function goToReportMonth(tag) {
     setReportMonth(tag);
@@ -160,23 +174,23 @@ export default function Tracker({ user, onSignOut }) {
   let dayLabel = `${DAY_NAMES[selD.getDay()]}, ${selD.getDate()} ${MONTH_NAMES[selD.getMonth()]} ${selD.getFullYear()}`;
   if (selectedDate === todayKey()) dayLabel = "Today · " + dayLabel;
   if (isSunday(selectedDate)) dayLabel += "  (Sunday rate)";
+  const isNoMeal = noMealSet.has(selectedDate);
   const allTaken = MEALS.every((m) => selectedRec[m].taken);
 
   // Month summary rows
   const year = selD.getFullYear(), month = selD.getMonth();
+  const inMonth = (k) => { const dd = dateFromKey(k); return dd.getFullYear() === year && dd.getMonth() === month; };
   let totalSpent = 0, totalMeals = 0, daysWithMeals = 0;
   const rows = [];
-  Object.keys(days)
-    .filter((k) => { const dd = dateFromKey(k); return dd.getFullYear() === year && dd.getMonth() === month; })
-    .sort()
-    .forEach((k) => {
-      const rec = recordFor(k);
-      const takenCount = MEALS.filter((m) => rec[m].taken).length;
-      if (!takenCount) return;
-      const total = dayTotal(rec);
-      daysWithMeals++; totalMeals += takenCount; totalSpent += total;
-      rows.push({ key: k, rec, total });
-    });
+  [...new Set([...Object.keys(days), ...noMealSet].filter(inMonth))].sort().forEach((k) => {
+    if (noMealSet.has(k)) { rows.push({ key: k, noMeal: true, total: 0 }); return; }
+    const rec = recordFor(k);
+    const takenCount = MEALS.filter((m) => rec[m].taken).length;
+    if (!takenCount) return;
+    const total = dayTotal(rec);
+    daysWithMeals++; totalMeals += takenCount; totalSpent += total;
+    rows.push({ key: k, rec, total });
+  });
 
   function exportData() {
     const blob = new Blob([JSON.stringify({ rates, days }, null, 2)], { type: "application/json" });
@@ -199,6 +213,7 @@ export default function Tracker({ user, onSignOut }) {
           <p className="subtitle">Signed in as {user.email}</p>
         </div>
         <div className="header-actions">
+          <ReminderToggle />
           <button className="btn btn-ghost small" type="button" onClick={() => setShowSettings((s) => !s)}>
             <SlidersHorizontal size={16} /> Rates
           </button>
@@ -240,24 +255,45 @@ export default function Tracker({ user, onSignOut }) {
           <section className="card meals" aria-label="Meals for the day">
             <div className="meals-toolbar">
               <button
-                className={"btn small" + (allTaken ? " btn-ghost" : " btn-primary-soft")}
+                className={"chip" + (isNoMeal ? " chip-on" : "")}
                 type="button"
-                onClick={() => setAllTaken(!allTaken)}
+                onClick={() => toggleNoMeal(!isNoMeal)}
               >
-                {allTaken ? <><X size={15} /> Clear all</> : <><Check size={15} /> Mark all 3 taken</>}
+                <Ban size={15} /> No meals today
               </button>
+              {!isNoMeal && (
+                <button
+                  className={"btn small" + (allTaken ? " btn-ghost" : " btn-primary-soft")}
+                  type="button"
+                  onClick={() => setAllTaken(!allTaken)}
+                >
+                  {allTaken ? <><X size={15} /> Clear all</> : <><Check size={15} /> Mark all 3 taken</>}
+                </button>
+              )}
             </div>
-            {MEALS.map((m) => (
-              <MealRow
-                key={m}
-                meta={MEAL_META[m]}
-                value={selectedRec[m]}
-                onChange={(patch) => setMeal(selectedDate, m, patch)}
-              />
-            ))}
+
+            {isNoMeal ? (
+              <div className="no-meal-state">
+                <span className="no-meal-icon"><Ban size={26} /></span>
+                <div>
+                  <div className="no-meal-title">No meals provided today</div>
+                  <div className="no-meal-sub">Nothing to log · ₹0 · no reminder tonight</div>
+                </div>
+              </div>
+            ) : (
+              MEALS.map((m) => (
+                <MealRow
+                  key={m}
+                  meta={MEAL_META[m]}
+                  value={selectedRec[m]}
+                  onChange={(patch) => setMeal(selectedDate, m, patch)}
+                />
+              ))
+            )}
+
             <div className="day-total">
               <span>Spent this day</span>
-              <strong>₹{dayTotal(selectedRec)}</strong>
+              <strong>₹{isNoMeal ? 0 : dayTotal(selectedRec)}</strong>
             </div>
           </section>
 
@@ -274,6 +310,7 @@ export default function Tracker({ user, onSignOut }) {
         <MonthlyReport
           monthKey={reportMonth}
           days={days}
+          noMealSet={noMealSet}
           recordFor={recordFor}
           onPrev={() => shiftReportMonth(-1)}
           onNext={() => shiftReportMonth(1)}

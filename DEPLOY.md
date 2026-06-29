@@ -50,12 +50,33 @@ In the Vercel project → **Settings → Environment Variables**, add these for 
 | `JWT_SECRET` | a long random string (e.g. from `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`) |
 | `GOOGLE_CLIENT_ID` | your Google OAuth client ID (only if using Google sign-in) |
 | `VITE_GOOGLE_CLIENT_ID` | same value as `GOOGLE_CLIENT_ID` |
+| `VAPID_PUBLIC_KEY` | for push reminders (only if using reminders) |
+| `VITE_VAPID_PUBLIC_KEY` | same value as `VAPID_PUBLIC_KEY` |
+| `VAPID_PRIVATE_KEY` | for push reminders — keep secret |
+| `VAPID_SUBJECT` | `mailto:you@example.com` |
+| `CRON_SECRET` | a random string; protects the daily cron endpoint |
 
 Notes:
-- `VITE_GOOGLE_CLIENT_ID` is read **at build time**, so after adding/changing it
-  you must **redeploy** for the Google button to appear.
+- `VITE_*` vars are read **at build time**, so after adding/changing them you must
+  **redeploy** (for the Google button and the reminders bell to appear).
 - You do **not** need `PORT` or `NEON_DATABASE_URL_UNPOOLED` on Vercel.
 - Tables are created automatically on the first request after deploy.
+
+### Daily reminder (optional)
+
+`vercel.json` registers a cron that calls `/api/cron/remind` at **16:30 UTC = 10:00 PM IST**
+every day. If a signed-in device has reminders enabled and hasn't logged all 3
+meals for the day, it pushes a notification.
+
+- Generate the VAPID keys once: `node -e "console.log(require('web-push').generateVAPIDKeys())"`,
+  then put the public key in **both** `VAPID_PUBLIC_KEY` and `VITE_VAPID_PUBLIC_KEY`.
+- Set `CRON_SECRET` — Vercel automatically sends it as `Authorization: Bearer …` to the cron.
+- Vercel **Hobby** crons run **once per day** (perfect here); the exact minute is approximate.
+- In the app, tap the **bell (Reminders)** in the header on each device to opt in
+  (the browser asks for notification permission).
+- To change the time, edit the `schedule` in `vercel.json` (UTC). For a different
+  timezone set `REMINDER_TZ_OFFSET_MIN` (minutes; IST = 330).
+- Manual test: `curl -H "Authorization: Bearer <CRON_SECRET>" https://your-app.vercel.app/api/cron/remind`
 
 ## 4. Deploy
 

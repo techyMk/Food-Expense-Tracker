@@ -50,21 +50,27 @@ export default function MonthSummary({ title, totalSpent, totalMeals, daysWithMe
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ key, rec, total }) => {
-                const dd = dateFromKey(key);
+              {rows.map((row) => {
+                const dd = dateFromKey(row.key);
                 return (
                   <tr
-                    key={key}
-                    className={key === today ? "is-today" : ""}
+                    key={row.key}
+                    className={row.key === today ? "is-today" : ""}
                     style={{ cursor: "pointer" }}
-                    onClick={() => onSelect(key)}
+                    onClick={() => onSelect(row.key)}
                   >
                     <td>{dd.getDate()} {MONTH_NAMES[dd.getMonth()].slice(0, 3)}</td>
                     <td>{DAY_NAMES[dd.getDay()].slice(0, 3)}</td>
-                    <Cell taken={rec.morning.taken} />
-                    <Cell taken={rec.afternoon.taken} />
-                    <Cell taken={rec.night.taken} />
-                    <td className="r spent">₹{total}</td>
+                    {row.noMeal ? (
+                      <td className="c no-meal-row" colSpan={3}>No meal</td>
+                    ) : (
+                      <>
+                        <Cell taken={row.rec.morning.taken} />
+                        <Cell taken={row.rec.afternoon.taken} />
+                        <Cell taken={row.rec.night.taken} />
+                      </>
+                    )}
+                    <td className="r spent">₹{row.total}</td>
                   </tr>
                 );
               })}

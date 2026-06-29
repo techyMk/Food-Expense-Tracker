@@ -2,28 +2,29 @@ import { Sunrise, Sun, Moon, Check, Minus, Download, ChevronLeft, ChevronRight }
 import { MEALS, MEAL_META, MONTH_NAMES, DAY_NAMES } from "../constants";
 import { dateFromKey, todayKey } from "../dateUtils";
 
-export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNext, onPickMonth }) {
+export default function MonthlyReport({ monthKey, days, noMealSet, recordFor, onPrev, onNext, onPickMonth }) {
   const [year, month] = monthKey.split("-").map(Number); // month is 1-12
   const monthIdx = month - 1;
   const today = todayKey();
+  const noMeals = noMealSet || new Set();
 
-  // Collect days in this month that have at least one meal taken.
-  const keys = Object.keys(days)
-    .filter((k) => {
-      const d = dateFromKey(k);
-      return d.getFullYear() === year && d.getMonth() === monthIdx;
-    })
-    .sort();
+  // All dates in this month that have meal records or a "no meal" flag.
+  const inMonth = (k) => {
+    const d = dateFromKey(k);
+    return d.getFullYear() === year && d.getMonth() === monthIdx;
+  };
+  const keys = [...new Set([...Object.keys(days), ...noMeals].filter(inMonth))].sort();
 
   const perMeal = {
     morning: { count: 0, amount: 0 },
     afternoon: { count: 0, amount: 0 },
     night: { count: 0, amount: 0 },
   };
-  let totalSpent = 0, totalMeals = 0, daysWithMeals = 0;
+  let totalSpent = 0, totalMeals = 0, daysWithMeals = 0, noMealDays = 0;
   const rows = [];
 
   for (const k of keys) {
+    if (noMeals.has(k)) { noMealDays++; rows.push({ key: k, noMeal: true, total: 0 }); continue; }
     const rec = recordFor(k);
     const takenCount = MEALS.filter((m) => rec[m].taken).length;
     if (!takenCount) continue;
@@ -46,15 +47,19 @@ export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNex
   function exportCsv() {
     const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
     const lines = [["Date", "Day", "Morning", "Afternoon", "Night", "Spent"].map(esc).join(",")];
-    for (const { key, rec, total } of rows) {
-      const d = dateFromKey(key);
+    for (const row of rows) {
+      const d = dateFromKey(row.key);
+      if (row.noMeal) {
+        lines.push([row.key, DAY_NAMES[d.getDay()], "No meal", "", "", 0].map(esc).join(","));
+        continue;
+      }
       lines.push([
-        key,
+        row.key,
         DAY_NAMES[d.getDay()],
-        rec.morning.taken ? rec.morning.amount : "",
-        rec.afternoon.taken ? rec.afternoon.amount : "",
-        rec.night.taken ? rec.night.amount : "",
-        total,
+        row.rec.morning.taken ? row.rec.morning.amount : "",
+        row.rec.afternoon.taken ? row.rec.afternoon.amount : "",
+        row.rec.night.taken ? row.rec.night.amount : "",
+        row.total,
       ].map(esc).join(","));
     }
     lines.push("");
@@ -138,16 +143,22 @@ export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNex
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ key, rec, total }) => {
-                  const d = dateFromKey(key);
+                {rows.map((row) => {
+                  const d = dateFromKey(row.key);
                   return (
-                    <tr key={key} className={key === today ? "is-today" : ""}>
+                    <tr key={row.key} className={row.key === today ? "is-today" : ""}>
                       <td>{d.getDate()} {MONTH_NAMES[monthIdx].slice(0, 3)}</td>
                       <td>{DAY_NAMES[d.getDay()].slice(0, 3)}</td>
-                      <td className="c">{rec.morning.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
-                      <td className="c">{rec.afternoon.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
-                      <td className="c">{rec.night.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
-                      <td className="r spent">₹{total}</td>
+                      {row.noMeal ? (
+                        <td className="c no-meal-row" colSpan={3}>No meal</td>
+                      ) : (
+                        <>
+                          <td className="c">{row.rec.morning.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
+                          <td className="c">{row.rec.afternoon.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
+                          <td className="c">{row.rec.night.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
+                        </>
+                      )}
+                      <td className="r spent">₹{row.total}</td>
                     </tr>
                   );
                 })}

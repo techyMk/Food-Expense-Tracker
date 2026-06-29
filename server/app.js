@@ -5,6 +5,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
+import webpush from "web-push";
 import { sql, isConfigured, initSchema } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,15 @@ const MEALS = ["morning", "afternoon", "night"];
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const googleEnabled = !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.includes("YOUR-CLIENT-ID");
 const googleClient = googleEnabled ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+// ---- Web Push (VAPID) ----
+const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:reminders@meal-tracker.app";
+const pushEnabled = !!VAPID_PUBLIC && !!VAPID_PRIVATE;
+if (pushEnabled) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+// Reminder fires for meals in this timezone offset (IST = +5:30 = 330 min).
+const TZ_OFFSET_MIN = Number(process.env.REMINDER_TZ_OFFSET_MIN || 330);
 
 // Ensure tables exist once per process/instance (safe on serverless cold starts).
 let schemaPromise = null;
@@ -49,7 +59,7 @@ function auth(req, res, next) {
 
 // ---- Health (frontend uses this to decide setup vs app) ----
 app.get("/api/health", (req, res) => {
-  res.json({ configured: isConfigured, google: googleEnabled });
+  res.json({ configured: isConfigured, google: googleEnabled, push: pushEnabled });
 });
 
 // Gate everything else on a working database (and lazily create tables).
@@ -152,7 +162,23 @@ app.get("/api/meals", auth, wrap(async (req, res) => {
       from meal_entries
      where user_id = ${req.user.id}
        and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
-  res.json({ entries: rows });
+  const { rows: flags } = await sql`
+    select to_char(date, 'YYYY-MM-DD') as date
+      from day_status
+     where user_id = ${req.user.id} and no_meal = true
+       and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
+  res.json({ entries: rows, noMeal: flags.map((f) => f.date) });
+}));
+
+app.put("/api/day-status", auth, wrap(async (req, res) => {
+  const { date } = req.body || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return res.status(400).json({ error: "Invalid date." });
+  const noMeal = !!req.body.noMeal;
+  await sql`
+    insert into day_status (user_id, date, no_meal, updated_at)
+    values (${req.user.id}, ${date}, ${noMeal}, now())
+    on conflict (user_id, date) do update set no_meal = excluded.no_meal, updated_at = now()`;
+  res.json({ ok: true });
 }));
 
 app.put("/api/meals", auth, wrap(async (req, res) => {
@@ -167,6 +193,71 @@ app.put("/api/meals", auth, wrap(async (req, res) => {
     on conflict (user_id, date, meal)
     do update set taken = excluded.taken, amount = excluded.amount, updated_at = now()`;
   res.json({ ok: true });
+}));
+
+// ---- Push subscriptions ----
+app.post("/api/push/subscribe", auth, wrap(async (req, res) => {
+  const sub = req.body?.subscription || req.body;
+  const endpoint = sub?.endpoint;
+  const p256dh = sub?.keys?.p256dh;
+  const authKey = sub?.keys?.auth;
+  if (!endpoint || !p256dh || !authKey) return res.status(400).json({ error: "Invalid subscription." });
+  await sql`
+    insert into push_subscriptions (endpoint, user_id, p256dh, auth)
+    values (${endpoint}, ${req.user.id}, ${p256dh}, ${authKey})
+    on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`;
+  res.json({ ok: true });
+}));
+
+app.post("/api/push/unsubscribe", auth, wrap(async (req, res) => {
+  const endpoint = req.body?.endpoint;
+  if (endpoint) await sql`delete from push_subscriptions where endpoint = ${endpoint} and user_id = ${req.user.id}`;
+  res.json({ ok: true });
+}));
+
+// ---- Daily reminder (called by Vercel Cron at ~10pm IST) ----
+app.get("/api/cron/remind", wrap(async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && (req.headers.authorization || "") !== `Bearer ${secret}`) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  if (!pushEnabled) return res.json({ ok: true, skipped: "push not configured" });
+
+  // Today's date in the reminder timezone.
+  const dateKey = new Date(Date.now() + TZ_OFFSET_MIN * 60000).toISOString().slice(0, 10);
+
+  const { rows } = await sql`
+    select s.endpoint, s.p256dh, s.auth, s.user_id,
+      (select count(*) from meal_entries me where me.user_id = s.user_id and me.date = ${dateKey}::date) as marked,
+      coalesce((select no_meal from day_status ds where ds.user_id = s.user_id and ds.date = ${dateKey}::date), false) as no_meal
+    from push_subscriptions s`;
+
+  let sent = 0, removed = 0;
+  for (const r of rows) {
+    if (r.no_meal) continue; // day marked "no meals" → no nudge
+    const marked = Number(r.marked) || 0;
+    if (marked >= MEALS.length) continue; // all logged → no nudge
+    const remaining = MEALS.length - marked;
+    const payload = JSON.stringify({
+      title: "Did you eat today?",
+      body: remaining === MEALS.length
+        ? "You haven't logged any meals today. Tap to fill them in."
+        : `You still have ${remaining} meal${remaining > 1 ? "s" : ""} to log for today.`,
+      url: "/",
+    });
+    try {
+      await webpush.sendNotification({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload);
+      sent++;
+    } catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        await sql`delete from push_subscriptions where endpoint = ${r.endpoint}`;
+        removed++;
+      } else {
+        console.warn("push send failed:", e.statusCode, e.body || e.message);
+      }
+    }
+  }
+  res.json({ ok: true, date: dateKey, candidates: rows.length, sent, removed });
 }));
 
 // ---- Serve the built frontend (local `npm start` only; on Vercel the CDN does this) ----

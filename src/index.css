@@ -144,6 +144,8 @@ h3 { font-size: 0.92rem; margin: 0 0 10px; color: var(--accent-deep); font-weigh
 .btn:hover { border-color: var(--accent); color: var(--accent-deep); }
 .btn:active { transform: translateY(1px); }
 .btn-ghost { background: transparent; }
+.btn.is-active { color: var(--accent-deep); border-color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 440px) { .hide-narrow { display: none; } }
 .btn.small { padding: 7px 12px; font-size: 0.84rem; }
 .btn.full { width: 100%; }
 .btn-primary {
@@ -263,7 +265,48 @@ h3 { font-size: 0.92rem; margin: 0 0 10px; color: var(--accent-deep); font-weigh
 .tab.active { background: var(--card); color: var(--accent-deep); box-shadow: var(--shadow-sm); }
 
 /* ---- Mark-all toolbar ---- */
-.meals-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.meals-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+
+/* "No meals today" chip */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.chip:hover { border-color: var(--muted); }
+.chip-on { background: #ece3d2; border-color: #d8cdb9; color: var(--ink); }
+
+/* No-meal day empty state */
+.no-meal-state {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--tile);
+  border: 1px dashed #d8cdb9;
+}
+.no-meal-icon {
+  width: 50px; height: 50px;
+  border-radius: 14px;
+  display: grid; place-items: center;
+  background: #ece3d2;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.no-meal-title { font-weight: 700; color: var(--ink); }
+.no-meal-sub { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+.no-meal-row { color: var(--muted); font-weight: 600; font-size: 0.82rem; }
 .btn-primary-soft {
   background: var(--accent-soft);
   border-color: transparent;

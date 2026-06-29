@@ -36,4 +36,18 @@ export async function initSchema() {
     updated_at timestamptz not null default now(),
     primary key (user_id, date, meal)
   )`;
+  await sql`create table if not exists push_subscriptions (
+    endpoint   text primary key,
+    user_id    uuid not null references users(id) on delete cascade,
+    p256dh     text not null,
+    auth       text not null,
+    created_at timestamptz not null default now()
+  )`;
+  await sql`create table if not exists day_status (
+    user_id    uuid not null references users(id) on delete cascade,
+    date       date not null,
+    no_meal    boolean not null default false,
+    updated_at timestamptz not null default now(),
+    primary key (user_id, date)
+  )`;
 }
