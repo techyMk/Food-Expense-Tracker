@@ -42,8 +42,9 @@ export default function ReminderToggle() {
       onClick={toggle}
       disabled={busy}
       aria-label={on ? "Turn reminders off" : "Turn reminders on"}
+      title={on ? "Reminders on — tap to turn off" : "Tap to turn on reminders"}
     >
-      {on ? <Bell size={16} /> : <BellOff size={16} />}
+      {on ? <BellOff size={16} /> : <Bell size={16} />}
       <span className="hide-narrow">Reminders</span>
     </button>
   );
