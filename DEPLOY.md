@@ -3,7 +3,7 @@
 The app is set up for Vercel:
 
 - **Frontend** (Vite) builds to `dist/` and is served from Vercel's CDN.
-- **API** runs as a single serverless function at `api/[...path].js`, which wraps
+- **API** runs as a single serverless function at `api/index.js`, which wraps
   the Express app in `server/app.js`.
 - **Database** is Neon, accessed over its **HTTP driver** (`@neondatabase/serverless`)
   — perfect for serverless (no persistent connections).
@@ -91,7 +91,7 @@ Pull requests get their own preview URLs.
 npm run dev      # API on :3001 + Vite on :5173 (proxying /api)
 ```
 
-`server/index.js` is the local entry; `api/[...path].js` is only used by Vercel.
+`server/index.js` is the local entry; `api/index.js` is only used by Vercel.
 
 ## Troubleshooting
 

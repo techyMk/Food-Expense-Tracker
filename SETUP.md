@@ -158,7 +158,7 @@ food recorder/
 ├─ .env.example            Template for .env
 ├─ vite.config.js          Dev server + /api proxy → :3001
 ├─ api/
-│  └─ [...path].js         Vercel serverless entry (wraps the Express app)
+│  └─ index.js            Vercel serverless entry (wraps the Express app)
 ├─ server/
 │  ├─ app.js               Express app: auth + data routes (shared)
 │  ├─ index.js             Local dev entry: listens on PORT
