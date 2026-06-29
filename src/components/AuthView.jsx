@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Utensils } from "lucide-react";
 import { api } from "../api";
 import GoogleButton, { googleEnabled } from "./GoogleButton";
 
@@ -46,7 +47,10 @@ export default function AuthView({ onAuthed }) {
   return (
     <div className="auth-wrap">
       <div className="card auth-card">
-        <h1>🍽️ Meal Tracker</h1>
+        <div className="brand-center">
+          <span className="brand-badge lg"><Utensils size={28} strokeWidth={2.2} /></span>
+          <h1>Meal Tracker</h1>
+        </div>
         <p className="muted">
           {signin ? "Sign in to sync your meals across devices." : "Create an account to start tracking."}
         </p>

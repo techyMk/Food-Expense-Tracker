@@ -1,8 +1,15 @@
+import { Sunrise, Sun, Moon, Check, Minus } from "lucide-react";
 import { MONTH_NAMES, DAY_NAMES } from "../constants";
 import { dateFromKey, todayKey } from "../dateUtils";
 
 function Cell({ taken }) {
-  return <td className="c">{taken ? <span className="tick">✓</span> : <span className="cross">·</span>}</td>;
+  return (
+    <td className="c">
+      {taken
+        ? <Check className="tick" size={17} strokeWidth={2.6} />
+        : <Minus className="cross" size={15} />}
+    </td>
+  );
 }
 
 export default function MonthSummary({ title, totalSpent, totalMeals, daysWithMeals, rows, onSelect }) {
@@ -36,9 +43,9 @@ export default function MonthSummary({ title, totalSpent, totalMeals, daysWithMe
               <tr>
                 <th>Date</th>
                 <th>Day</th>
-                <th className="c">🌅</th>
-                <th className="c">☀️</th>
-                <th className="c">🌙</th>
+                <th className="c"><Sunrise size={16} /></th>
+                <th className="c"><Sun size={16} /></th>
+                <th className="c"><Moon size={16} /></th>
                 <th className="r">Spent</th>
               </tr>
             </thead>

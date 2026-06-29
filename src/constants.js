@@ -1,9 +1,11 @@
+import { Sunrise, Sun, Moon } from "lucide-react";
+
 export const MEALS = ["morning", "afternoon", "night"];
 
 export const MEAL_META = {
-  morning: { label: "Morning", icon: "🌅", sub: "Breakfast" },
-  afternoon: { label: "Afternoon", icon: "☀️", sub: "Lunch" },
-  night: { label: "Night", icon: "🌙", sub: "Dinner" },
+  morning: { label: "Morning", Icon: Sunrise, sub: "Breakfast" },
+  afternoon: { label: "Afternoon", Icon: Sun, sub: "Lunch" },
+  night: { label: "Night", Icon: Moon, sub: "Dinner" },
 };
 
 // Weekday 35/50/35 = 120, Sunday 35/80/35 = 150 (all editable per user).

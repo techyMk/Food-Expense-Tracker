@@ -1,9 +1,10 @@
 import NumberField from "./NumberField";
 
 export default function MealRow({ meta, value, onChange }) {
+  const { Icon } = meta;
   return (
     <div className={"meal " + (value.taken ? "is-taken" : "not-taken")}>
-      <div className="meal-icon">{meta.icon}</div>
+      <div className="meal-icon"><Icon size={22} strokeWidth={2.2} /></div>
       <div className="meal-info">
         <div className="meal-name">{meta.label}</div>
         <div className="meal-sub">{meta.sub}</div>

@@ -1,3 +1,4 @@
+import { Sunrise, Sun, Moon, Check, Minus, Download, ChevronLeft, ChevronRight } from "lucide-react";
 import { MEALS, MEAL_META, MONTH_NAMES, DAY_NAMES } from "../constants";
 import { dateFromKey, todayKey } from "../dateUtils";
 
@@ -70,12 +71,12 @@ export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNex
   return (
     <div className="report">
       <nav className="day-nav card">
-        <button className="btn btn-round" type="button" aria-label="Previous month" onClick={onPrev}>‹</button>
+        <button className="btn btn-round" type="button" aria-label="Previous month" onClick={onPrev}><ChevronLeft size={22} /></button>
         <div className="day-nav-center">
           <input type="month" value={monthKey} onChange={(e) => e.target.value && onPickMonth(e.target.value)} />
           <div className="day-label">{MONTH_NAMES[monthIdx]} {year}</div>
         </div>
-        <button className="btn btn-round" type="button" aria-label="Next month" onClick={onNext}>›</button>
+        <button className="btn btn-round" type="button" aria-label="Next month" onClick={onNext}><ChevronRight size={22} /></button>
       </nav>
 
       <section className="card report-hero">
@@ -100,14 +101,17 @@ export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNex
       <section className="card">
         <h2>By meal</h2>
         <div className="breakdown">
-          {MEALS.map((m) => (
-            <div className="breakdown-item" key={m}>
-              <span className="breakdown-icon">{MEAL_META[m].icon}</span>
-              <span className="breakdown-name">{MEAL_META[m].label}</span>
-              <span className="breakdown-count">{perMeal[m].count}× taken</span>
-              <span className="breakdown-amount">₹{perMeal[m].amount}</span>
-            </div>
-          ))}
+          {MEALS.map((m) => {
+            const Icon = MEAL_META[m].Icon;
+            return (
+              <div className="breakdown-item" key={m}>
+                <span className="breakdown-icon"><Icon size={20} /></span>
+                <span className="breakdown-name">{MEAL_META[m].label}</span>
+                <span className="breakdown-count">{perMeal[m].count}× taken</span>
+                <span className="breakdown-amount">₹{perMeal[m].amount}</span>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -115,7 +119,7 @@ export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNex
         <div className="report-table-head">
           <h2>Daily breakdown</h2>
           {rows.length > 0 && (
-            <button className="btn btn-ghost small" type="button" onClick={exportCsv}>⤓ CSV</button>
+            <button className="btn btn-ghost small" type="button" onClick={exportCsv}><Download size={15} /> CSV</button>
           )}
         </div>
         <div className="table-wrap">
@@ -127,9 +131,9 @@ export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNex
                 <tr>
                   <th>Date</th>
                   <th>Day</th>
-                  <th className="c">🌅</th>
-                  <th className="c">☀️</th>
-                  <th className="c">🌙</th>
+                  <th className="c"><Sunrise size={16} /></th>
+                  <th className="c"><Sun size={16} /></th>
+                  <th className="c"><Moon size={16} /></th>
                   <th className="r">Spent</th>
                 </tr>
               </thead>
@@ -140,9 +144,9 @@ export default function MonthlyReport({ monthKey, days, recordFor, onPrev, onNex
                     <tr key={key} className={key === today ? "is-today" : ""}>
                       <td>{d.getDate()} {MONTH_NAMES[monthIdx].slice(0, 3)}</td>
                       <td>{DAY_NAMES[d.getDay()].slice(0, 3)}</td>
-                      <td className="c">{rec.morning.taken ? <span className="tick">✓</span> : <span className="cross">·</span>}</td>
-                      <td className="c">{rec.afternoon.taken ? <span className="tick">✓</span> : <span className="cross">·</span>}</td>
-                      <td className="c">{rec.night.taken ? <span className="tick">✓</span> : <span className="cross">·</span>}</td>
+                      <td className="c">{rec.morning.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
+                      <td className="c">{rec.afternoon.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
+                      <td className="c">{rec.night.taken ? <Check className="tick" size={17} strokeWidth={2.6} /> : <Minus className="cross" size={15} />}</td>
                       <td className="r spent">₹{total}</td>
                     </tr>
                   );

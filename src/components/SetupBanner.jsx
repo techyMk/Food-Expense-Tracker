@@ -2,7 +2,7 @@ export default function SetupBanner() {
   return (
     <div className="setup-wrap">
       <div className="card setup-card">
-        <h1>🔧 Almost there</h1>
+        <h1>Almost there</h1>
         <p>Connect a Neon database to start tracking.</p>
         <ol>
           <li>Create a free project at <strong>neon.tech</strong>.</li>

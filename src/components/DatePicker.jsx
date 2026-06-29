@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { dateFromKey, keyFromDate, todayKey } from "../dateUtils";
 import { DAY_NAMES, MONTH_NAMES } from "../constants";
 
@@ -66,20 +67,17 @@ export default function DatePicker({ value, onChange }) {
   return (
     <div className="datepicker" ref={ref}>
       <button type="button" className="dp-trigger" onClick={toggle}>
-        <svg className="dp-cal" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="3" y="4" width="18" height="18" rx="3" />
-          <path d="M3 9h18M8 2v4M16 2v4" />
-        </svg>
+        <CalendarDays className="dp-cal" size={18} />
         <span className="dp-trigger-label">{triggerLabel}</span>
-        <span className={"dp-chevron" + (open ? " up" : "")}>▾</span>
+        <ChevronDown className={"dp-chevron" + (open ? " up" : "")} size={16} />
       </button>
 
       {open && (
         <div className="dp-pop" role="dialog" aria-label="Choose date">
           <div className="dp-head">
-            <button type="button" className="dp-nav" onClick={() => shiftMonth(-1)} aria-label="Previous month">‹</button>
+            <button type="button" className="dp-nav" onClick={() => shiftMonth(-1)} aria-label="Previous month"><ChevronLeft size={18} /></button>
             <span className="dp-title">{MONTH_NAMES[m]} {y}</span>
-            <button type="button" className="dp-nav" onClick={() => shiftMonth(1)} aria-label="Next month">›</button>
+            <button type="button" className="dp-nav" onClick={() => shiftMonth(1)} aria-label="Next month"><ChevronRight size={18} /></button>
           </div>
 
           <div className="dp-grid dp-weekdays">

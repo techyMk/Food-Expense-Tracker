@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { Utensils, SlidersHorizontal, LogOut, Check, X } from "lucide-react";
 import { api } from "../api";
 import { useToast } from "../context/ToastContext";
 import {
@@ -191,15 +192,18 @@ export default function Tracker({ user, onSignOut }) {
     <div className="app">
       <header className="app-header">
         <div className="header-titles">
-          <h1>🍽️ Meal &amp; Expense Tracker</h1>
+          <div className="brand">
+            <span className="brand-badge"><Utensils size={20} strokeWidth={2.2} /></span>
+            <h1>Meal Tracker</h1>
+          </div>
           <p className="subtitle">Signed in as {user.email}</p>
         </div>
         <div className="header-actions">
           <button className="btn btn-ghost small" type="button" onClick={() => setShowSettings((s) => !s)}>
-            ⚙️ Rates
+            <SlidersHorizontal size={16} /> Rates
           </button>
           <button className="btn btn-ghost small" type="button" onClick={onSignOut}>
-            Sign out
+            <LogOut size={16} /> Sign out
           </button>
         </div>
       </header>
@@ -240,7 +244,7 @@ export default function Tracker({ user, onSignOut }) {
                 type="button"
                 onClick={() => setAllTaken(!allTaken)}
               >
-                {allTaken ? "Clear all" : "✓ Mark all 3 taken"}
+                {allTaken ? <><X size={15} /> Clear all</> : <><Check size={15} /> Mark all 3 taken</>}
               </button>
             </div>
             {MEALS.map((m) => (
