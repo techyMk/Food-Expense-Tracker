@@ -1,34 +1,37 @@
-import { Sunrise, Sun, Moon, Check, Minus, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sunrise, Sun, Moon, Check, Minus, Download, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { MEALS, MEAL_META, MONTH_NAMES, DAY_NAMES } from "../constants";
 import { dateFromKey, todayKey } from "../dateUtils";
 
-export default function MonthlyReport({ monthKey, days, noMealSet, recordFor, onPrev, onNext, onPickMonth }) {
+export default function MonthlyReport({ monthKey, days, dayStatus, recordFor, onPrev, onNext, onPickMonth }) {
   const [year, month] = monthKey.split("-").map(Number); // month is 1-12
   const monthIdx = month - 1;
   const today = todayKey();
-  const noMeals = noMealSet || new Set();
+  const status = dayStatus || {};
+  const statusFor = (k) => status[k] || { noMeal: false, adjustment: 0, note: "" };
 
-  // All dates in this month that have meal records or a "no meal" flag.
+  // All dates in this month that have meal records or a day status.
   const inMonth = (k) => {
     const d = dateFromKey(k);
     return d.getFullYear() === year && d.getMonth() === monthIdx;
   };
-  const keys = [...new Set([...Object.keys(days), ...noMeals].filter(inMonth))].sort();
+  const keys = [...new Set([...Object.keys(days), ...Object.keys(status)].filter(inMonth))].sort();
 
   const perMeal = {
     morning: { count: 0, amount: 0 },
     afternoon: { count: 0, amount: 0 },
     night: { count: 0, amount: 0 },
   };
-  let totalSpent = 0, totalMeals = 0, daysWithMeals = 0, noMealDays = 0;
+  let totalSpent = 0, totalMeals = 0, daysWithMeals = 0, totalExtra = 0;
   const rows = [];
 
   for (const k of keys) {
-    if (noMeals.has(k)) { noMealDays++; rows.push({ key: k, noMeal: true, total: 0 }); continue; }
+    const st = statusFor(k);
+    if (st.noMeal) { rows.push({ key: k, noMeal: true, total: 0 }); continue; }
     const rec = recordFor(k);
     const takenCount = MEALS.filter((m) => rec[m].taken).length;
-    if (!takenCount) continue;
-    daysWithMeals++;
+    const adj = st.adjustment || 0;
+    if (!takenCount && !adj) continue;
+    if (takenCount) daysWithMeals++;
     totalMeals += takenCount;
     let dayTotal = 0;
     for (const m of MEALS) {
@@ -38,19 +41,21 @@ export default function MonthlyReport({ monthKey, days, noMealSet, recordFor, on
         dayTotal += Number(rec[m].amount) || 0;
       }
     }
+    dayTotal += adj;
+    totalExtra += adj;
     totalSpent += dayTotal;
-    rows.push({ key: k, rec, total: dayTotal });
+    rows.push({ key: k, rec, total: dayTotal, adjustment: adj, note: st.note });
   }
 
   const avgPerActiveDay = daysWithMeals ? Math.round(totalSpent / daysWithMeals) : 0;
 
   function exportCsv() {
     const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const lines = [["Date", "Day", "Morning", "Afternoon", "Night", "Spent"].map(esc).join(",")];
+    const lines = [["Date", "Day", "Morning", "Afternoon", "Night", "Extra", "Note", "Spent"].map(esc).join(",")];
     for (const row of rows) {
       const d = dateFromKey(row.key);
       if (row.noMeal) {
-        lines.push([row.key, DAY_NAMES[d.getDay()], "No meal", "", "", 0].map(esc).join(","));
+        lines.push([row.key, DAY_NAMES[d.getDay()], "No meal", "", "", "", "", 0].map(esc).join(","));
         continue;
       }
       lines.push([
@@ -59,11 +64,13 @@ export default function MonthlyReport({ monthKey, days, noMealSet, recordFor, on
         row.rec.morning.taken ? row.rec.morning.amount : "",
         row.rec.afternoon.taken ? row.rec.afternoon.amount : "",
         row.rec.night.taken ? row.rec.night.amount : "",
+        row.adjustment || "",
+        row.note || "",
         row.total,
       ].map(esc).join(","));
     }
     lines.push("");
-    lines.push(["Total", "", perMeal.morning.amount, perMeal.afternoon.amount, perMeal.night.amount, totalSpent].map(esc).join(","));
+    lines.push(["Total", "", perMeal.morning.amount, perMeal.afternoon.amount, perMeal.night.amount, totalExtra, "", totalSpent].map(esc).join(","));
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -117,6 +124,14 @@ export default function MonthlyReport({ monthKey, days, noMealSet, recordFor, on
               </div>
             );
           })}
+          {totalExtra !== 0 && (
+            <div className="breakdown-item">
+              <span className="breakdown-icon"><Plus size={20} /></span>
+              <span className="breakdown-name">Special / extra</span>
+              <span className="breakdown-count">added to bills</span>
+              <span className="breakdown-amount">₹{totalExtra}</span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -147,7 +162,10 @@ export default function MonthlyReport({ monthKey, days, noMealSet, recordFor, on
                   const d = dateFromKey(row.key);
                   return (
                     <tr key={row.key} className={row.key === today ? "is-today" : ""}>
-                      <td>{d.getDate()} {MONTH_NAMES[monthIdx].slice(0, 3)}</td>
+                      <td>
+                        {d.getDate()} {MONTH_NAMES[monthIdx].slice(0, 3)}
+                        {row.adjustment ? <span className="extra-tag" title={row.note || "Special charge"}>+₹{row.adjustment}</span> : null}
+                      </td>
                       <td>{DAY_NAMES[d.getDay()].slice(0, 3)}</td>
                       {row.noMeal ? (
                         <td className="c no-meal-row" colSpan={3}>No meal</td>

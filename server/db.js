@@ -47,7 +47,11 @@ export async function initSchema() {
     user_id    uuid not null references users(id) on delete cascade,
     date       date not null,
     no_meal    boolean not null default false,
+    adjustment integer not null default 0,
+    note       text,
     updated_at timestamptz not null default now(),
     primary key (user_id, date)
   )`;
+  await sql`alter table day_status add column if not exists adjustment integer not null default 0`;
+  await sql`alter table day_status add column if not exists note text`;
 }

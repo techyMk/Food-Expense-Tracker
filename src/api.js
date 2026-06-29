@@ -53,7 +53,7 @@ export const api = {
 
   getMeals: (month) => request("/meals?month=" + month),
   saveMeal: (entry) => request("/meals", { method: "PUT", body: entry }),
-  setDayStatus: (date, noMeal) => request("/day-status", { method: "PUT", body: { date, noMeal } }),
+  setDayStatus: (date, status) => request("/day-status", { method: "PUT", body: { date, ...status } }),
 
   pushSubscribe: (subscription) => request("/push/subscribe", { method: "POST", body: { subscription } }),
   pushUnsubscribe: (endpoint) => request("/push/unsubscribe", { method: "POST", body: { endpoint } }),

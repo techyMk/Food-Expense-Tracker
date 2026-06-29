@@ -162,22 +162,30 @@ app.get("/api/meals", auth, wrap(async (req, res) => {
       from meal_entries
      where user_id = ${req.user.id}
        and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
-  const { rows: flags } = await sql`
-    select to_char(date, 'YYYY-MM-DD') as date
+  const { rows: statusRows } = await sql`
+    select to_char(date, 'YYYY-MM-DD') as date, no_meal, adjustment, note
       from day_status
-     where user_id = ${req.user.id} and no_meal = true
+     where user_id = ${req.user.id}
+       and (no_meal = true or adjustment <> 0 or note is not null)
        and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
-  res.json({ entries: rows, noMeal: flags.map((f) => f.date) });
+  const status = {};
+  for (const s of statusRows) {
+    status[s.date] = { noMeal: !!s.no_meal, adjustment: Number(s.adjustment) || 0, note: s.note || "" };
+  }
+  res.json({ entries: rows, status });
 }));
 
 app.put("/api/day-status", auth, wrap(async (req, res) => {
   const { date } = req.body || {};
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return res.status(400).json({ error: "Invalid date." });
   const noMeal = !!req.body.noMeal;
+  const adjustment = Math.round(Number(req.body.adjustment) || 0);
+  const note = req.body.note ? String(req.body.note).slice(0, 200) : null;
   await sql`
-    insert into day_status (user_id, date, no_meal, updated_at)
-    values (${req.user.id}, ${date}, ${noMeal}, now())
-    on conflict (user_id, date) do update set no_meal = excluded.no_meal, updated_at = now()`;
+    insert into day_status (user_id, date, no_meal, adjustment, note, updated_at)
+    values (${req.user.id}, ${date}, ${noMeal}, ${adjustment}, ${note}, now())
+    on conflict (user_id, date) do update set
+      no_meal = excluded.no_meal, adjustment = excluded.adjustment, note = excluded.note, updated_at = now()`;
   res.json({ ok: true });
 }));
 

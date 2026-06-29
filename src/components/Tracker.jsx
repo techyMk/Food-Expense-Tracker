@@ -14,12 +14,13 @@ import RatesPanel from "./RatesPanel";
 import MonthSummary from "./MonthSummary";
 import MonthlyReport from "./MonthlyReport";
 import ReminderToggle from "./ReminderToggle";
+import DayExtra from "./DayExtra";
 
 export default function Tracker({ user, onSignOut }) {
   const toast = useToast();
   const [rates, setRates] = useState(() => cloneRates(FACTORY_RATES));
   const [days, setDays] = useState({}); // { "YYYY-MM-DD": { morning: {taken, amount}, ... } }
-  const [noMealSet, setNoMealSet] = useState(() => new Set()); // dates with no meals provided
+  const [dayStatus, setDayStatus] = useState({}); // date -> { noMeal, adjustment, note }
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [showSettings, setShowSettings] = useState(false);
   const [view, setView] = useState("daily"); // "daily" | "report"
@@ -65,7 +66,7 @@ export default function Tracker({ user, onSignOut }) {
     if (loadedMonths.current.has(tag)) return;
     loadedMonths.current.add(tag);
     try {
-      const { entries, noMeal } = await api.getMeals(tag);
+      const { entries, status } = await api.getMeals(tag);
       setDays((prev) => {
         const next = { ...prev };
         for (const row of entries || []) {
@@ -73,9 +74,7 @@ export default function Tracker({ user, onSignOut }) {
         }
         return next;
       });
-      if (noMeal && noMeal.length) {
-        setNoMealSet((prev) => { const n = new Set(prev); noMeal.forEach((d) => n.add(d)); return n; });
-      }
+      if (status) setDayStatus((prev) => ({ ...prev, ...status }));
     } catch {
       loadedMonths.current.delete(tag);
       toast("Couldn't load that month.");
@@ -142,14 +141,14 @@ export default function Tracker({ user, onSignOut }) {
     }
   }
 
-  function toggleNoMeal(value) {
-    setNoMealSet((prev) => {
-      const n = new Set(prev);
-      if (value) n.add(selectedDate); else n.delete(selectedDate);
-      return n;
-    });
-    api.setDayStatus(selectedDate, value).catch(() => toast("Couldn't save — try again."));
+  const statusFor = (key) => dayStatus[key] || { noMeal: false, adjustment: 0, note: "" };
+
+  function updateDayStatus(patch) {
+    const next = { ...statusFor(selectedDate), ...patch };
+    setDayStatus((prev) => ({ ...prev, [selectedDate]: next }));
+    api.setDayStatus(selectedDate, next).catch(() => toast("Couldn't save — try again."));
   }
+  const toggleNoMeal = (value) => updateDayStatus({ noMeal: value });
 
   // ---- Monthly report ----
   async function goToReportMonth(tag) {
@@ -174,7 +173,10 @@ export default function Tracker({ user, onSignOut }) {
   let dayLabel = `${DAY_NAMES[selD.getDay()]}, ${selD.getDate()} ${MONTH_NAMES[selD.getMonth()]} ${selD.getFullYear()}`;
   if (selectedDate === todayKey()) dayLabel = "Today · " + dayLabel;
   if (isSunday(selectedDate)) dayLabel += "  (Sunday rate)";
-  const isNoMeal = noMealSet.has(selectedDate);
+  const selStatus = statusFor(selectedDate);
+  const isNoMeal = selStatus.noMeal;
+  const adjustment = selStatus.adjustment || 0;
+  const selDayTotal = isNoMeal ? 0 : dayTotal(selectedRec) + adjustment;
   const allTaken = MEALS.every((m) => selectedRec[m].taken);
 
   // Month summary rows
@@ -182,14 +184,17 @@ export default function Tracker({ user, onSignOut }) {
   const inMonth = (k) => { const dd = dateFromKey(k); return dd.getFullYear() === year && dd.getMonth() === month; };
   let totalSpent = 0, totalMeals = 0, daysWithMeals = 0;
   const rows = [];
-  [...new Set([...Object.keys(days), ...noMealSet].filter(inMonth))].sort().forEach((k) => {
-    if (noMealSet.has(k)) { rows.push({ key: k, noMeal: true, total: 0 }); return; }
+  [...new Set([...Object.keys(days), ...Object.keys(dayStatus)].filter(inMonth))].sort().forEach((k) => {
+    const st = statusFor(k);
+    if (st.noMeal) { rows.push({ key: k, noMeal: true, total: 0 }); return; }
     const rec = recordFor(k);
     const takenCount = MEALS.filter((m) => rec[m].taken).length;
-    if (!takenCount) return;
-    const total = dayTotal(rec);
-    daysWithMeals++; totalMeals += takenCount; totalSpent += total;
-    rows.push({ key: k, rec, total });
+    const adj = st.adjustment || 0;
+    if (!takenCount && !adj) return;
+    const total = dayTotal(rec) + adj;
+    if (takenCount) daysWithMeals++;
+    totalMeals += takenCount; totalSpent += total;
+    rows.push({ key: k, rec, total, adjustment: adj });
   });
 
   function exportData() {
@@ -281,19 +286,27 @@ export default function Tracker({ user, onSignOut }) {
                 </div>
               </div>
             ) : (
-              MEALS.map((m) => (
-                <MealRow
-                  key={m}
-                  meta={MEAL_META[m]}
-                  value={selectedRec[m]}
-                  onChange={(patch) => setMeal(selectedDate, m, patch)}
-                />
-              ))
+              <>
+                {MEALS.map((m) => (
+                  <MealRow
+                    key={m}
+                    meta={MEAL_META[m]}
+                    value={selectedRec[m]}
+                    onChange={(patch) => setMeal(selectedDate, m, patch)}
+                  />
+                ))}
+                <DayExtra amount={adjustment} note={selStatus.note} onChange={updateDayStatus} />
+              </>
             )}
 
             <div className="day-total">
-              <span>Spent this day</span>
-              <strong>₹{isNoMeal ? 0 : dayTotal(selectedRec)}</strong>
+              <div>
+                <span>Spent this day</span>
+                {!isNoMeal && adjustment !== 0 && (
+                  <div className="day-total-sub">includes ₹{adjustment} special charge</div>
+                )}
+              </div>
+              <strong>₹{selDayTotal}</strong>
             </div>
           </section>
 
@@ -310,7 +323,7 @@ export default function Tracker({ user, onSignOut }) {
         <MonthlyReport
           monthKey={reportMonth}
           days={days}
-          noMealSet={noMealSet}
+          dayStatus={dayStatus}
           recordFor={recordFor}
           onPrev={() => shiftReportMonth(-1)}
           onNext={() => shiftReportMonth(1)}
