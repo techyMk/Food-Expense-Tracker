@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Meal &amp; Expense Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Shown when config.js still has placeholder values -->
+  <div id="setupBanner" class="setup-wrap hidden">
+    <div class="card setup-card">
+      <h1>🔧 Almost there</h1>
+      <p>Connect your Supabase project to start tracking.</p>
+      <ol>
+        <li>Create a free project at <strong>supabase.com</strong>.</li>
+        <li>Open <strong>SQL Editor</strong> and run the contents of <code>supabase-schema.sql</code>.</li>
+        <li>In <strong>Settings → API</strong>, copy the <em>Project URL</em> and <em>anon</em> key into <code>config.js</code>.</li>
+        <li>Reload this page.</li>
+      </ol>
+      <p class="muted">Full steps are in <code>SETUP.md</code>.</p>
+    </div>
+  </div>
+
+  <!-- Login / sign-up -->
+  <div id="authView" class="auth-wrap hidden">
+    <div class="card auth-card">
+      <h1>🍽️ Meal Tracker</h1>
+      <p class="muted" id="authIntro">Sign in to sync your meals across devices.</p>
+      <form id="authForm" novalidate>
+        <label class="field">
+          <span>Email</span>
+          <input type="email" id="authEmail" required autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input type="password" id="authPassword" required minlength="6" autocomplete="current-password" placeholder="At least 6 characters" />
+        </label>
+        <div id="authMsg" class="auth-msg hidden"></div>
+        <button type="submit" id="authSubmit" class="btn btn-primary full">Sign in</button>
+      </form>
+      <p class="muted center switch-line">
+        <span id="authSwitchText">New here?</span>
+        <button type="button" id="authSwitch" class="linkish">Create an account</button>
+      </p>
+    </div>
+  </div>
+
+  <!-- Main app -->
+  <div id="appView" class="app hidden">
+    <header class="app-header">
+      <div class="header-titles">
+        <h1>🍽️ Meal &amp; Expense Tracker</h1>
+        <p class="subtitle" id="userLine">Synced to your account</p>
+      </div>
+      <div class="header-actions">
+        <button id="settingsToggle" class="btn btn-ghost small" type="button">⚙️ Rates</button>
+        <button id="signOutBtn" class="btn btn-ghost small" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <!-- Settings panel (default rates) -->
+    <section id="settingsPanel" class="card settings hidden" aria-label="Default rates">
+      <h2>Default rates</h2>
+      <p class="muted">These pre-fill new days. You can still change any single day below.</p>
+      <div class="rates-grid">
+        <div class="rates-col">
+          <h3>Mon – Sat</h3>
+          <label>Morning <input type="number" inputmode="numeric" min="0" step="1" id="rate-weekday-morning" /></label>
+          <label>Afternoon <input type="number" inputmode="numeric" min="0" step="1" id="rate-weekday-afternoon" /></label>
+          <label>Night <input type="number" inputmode="numeric" min="0" step="1" id="rate-weekday-night" /></label>
+          <div class="rates-total">Total: ₹<span id="weekdayTotal">0</span></div>
+        </div>
+        <div class="rates-col">
+          <h3>Sunday</h3>
+          <label>Morning <input type="number" inputmode="numeric" min="0" step="1" id="rate-sunday-morning" /></label>
+          <label>Afternoon <input type="number" inputmode="numeric" min="0" step="1" id="rate-sunday-afternoon" /></label>
+          <label>Night <input type="number" inputmode="numeric" min="0" step="1" id="rate-sunday-night" /></label>
+          <div class="rates-total">Total: ₹<span id="sundayTotal">0</span></div>
+        </div>
+      </div>
+      <button id="resetRates" class="btn btn-ghost small" type="button">Reset to ₹35 / ₹50 / ₹35</button>
+    </section>
+
+    <!-- Day navigation -->
+    <nav class="day-nav card">
+      <button id="prevDay" class="btn btn-round" type="button" aria-label="Previous day">‹</button>
+      <div class="day-nav-center">
+        <input type="date" id="datePicker" />
+        <div id="dayLabel" class="day-label"></div>
+      </div>
+      <button id="nextDay" class="btn btn-round" type="button" aria-label="Next day">›</button>
+    </nav>
+    <div class="today-row">
+      <button id="todayBtn" class="btn btn-ghost small" type="button">Jump to today</button>
+    </div>
+
+    <!-- Meals for the selected day -->
+    <section class="card meals" aria-label="Meals for the day">
+      <div id="mealList"></div>
+      <div class="day-total">
+        <span>Spent this day</span>
+        <strong>₹<span id="dayTotal">0</span></strong>
+      </div>
+    </section>
+
+    <!-- Monthly summary -->
+    <section class="card summary" aria-label="Monthly summary">
+      <div class="summary-head">
+        <h2 id="monthTitle">This month</h2>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-num" id="monthSpent">₹0</span>
+          <span class="stat-label">Total spent</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="monthMeals">0</span>
+          <span class="stat-label">Meals taken</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="monthDays">0</span>
+          <span class="stat-label">Days with meals</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="monthTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Day</th>
+              <th class="c">🌅</th>
+              <th class="c">☀️</th>
+              <th class="c">🌙</th>
+              <th class="r">Spent</th>
+            </tr>
+          </thead>
+          <tbody id="monthTableBody"></tbody>
+        </table>
+        <p id="emptyMonth" class="muted center hidden">No meals recorded this month yet.</p>
+      </div>
+    </section>
+
+    <footer class="app-footer muted">
+      Synced to Supabase ·
+      <button id="exportBtn" class="linkish" type="button">Export visible data</button>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Supabase client (v2) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
