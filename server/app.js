@@ -223,6 +223,37 @@ app.post("/api/push/unsubscribe", auth, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---- TEMP: send a test push to the current user's own devices ----
+app.post("/api/push/test", auth, wrap(async (req, res) => {
+  if (!pushEnabled) return res.status(503).json({ error: "Push isn't configured on the server (missing VAPID keys)." });
+  const { rows } = await sql`
+    select endpoint, p256dh, auth from push_subscriptions where user_id = ${req.user.id}`;
+  if (!rows.length) return res.status(404).json({ error: "No subscription found — turn reminders on first." });
+
+  const payload = JSON.stringify({
+    title: "Test notification ✅",
+    body: "If you can see this, reminders are working.",
+    url: "/",
+  });
+
+  let sent = 0, removed = 0;
+  const errors = [];
+  for (const r of rows) {
+    try {
+      await webpush.sendNotification({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload);
+      sent++;
+    } catch (e) {
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        await sql`delete from push_subscriptions where endpoint = ${r.endpoint}`;
+        removed++;
+      } else {
+        errors.push(`${e.statusCode || "?"}: ${e.body || e.message}`);
+      }
+    }
+  }
+  res.json({ ok: true, subscriptions: rows.length, sent, removed, errors });
+}));
+
 // ---- Daily reminder (called by Vercel Cron at ~10pm IST) ----
 app.get("/api/cron/remind", wrap(async (req, res) => {
   const secret = process.env.CRON_SECRET;
