@@ -57,4 +57,5 @@ export const api = {
 
   pushSubscribe: (subscription) => request("/push/subscribe", { method: "POST", body: { subscription } }),
   pushUnsubscribe: (endpoint) => request("/push/unsubscribe", { method: "POST", body: { endpoint } }),
+  pushTest: () => request("/push/test", { method: "POST" }),
 };
