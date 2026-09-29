@@ -96,9 +96,10 @@ const loadTarget = wrap(async (req, res, next) => {
   const { rows } = await sql`select id, email, role from users where id = ${id}`;
   const target = rows[0];
   if (!target) return res.status(404).json({ error: "No such member." });
-  // Admins reach normal members only; the superuser reaches everyone.
-  if (req.actor.role !== "superuser" && target.role !== "user") {
-    return res.status(403).json({ error: "You can only manage normal members." });
+  // A provider reaches everyone who eats — including the superuser, who is a
+  // member too — but not another provider, who has no meals to manage.
+  if (req.actor.role !== "superuser" && target.role === "admin") {
+    return res.status(403).json({ error: "Providers don't have meal entries to manage." });
   }
   req.target = target;
   next();
@@ -385,6 +386,7 @@ app.get("/api/admin/users", auth, managerOnly, wrap(async (req, res) => {
   const month = String(req.query.month || "");
   if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "Invalid month." });
   const start = month + "-01";
+  // The superuser sees every account; a provider sees everyone who eats.
   const everyone = req.actor.role === "superuser";
   const { rows } = await sql`
     select u.id, u.email, u.role,
@@ -410,7 +412,7 @@ app.get("/api/admin/users", auth, managerOnly, wrap(async (req, res) => {
            ), 0) as meals_taken,
            (select to_char(max(me.date), 'YYYY-MM-DD') from meal_entries me where me.user_id = u.id) as last_entry
       from users u
-     where ${everyone}::boolean or u.role = 'user'
+     where ${everyone}::boolean or u.role <> 'admin'
      order by u.email`;
   res.json({
     month,
