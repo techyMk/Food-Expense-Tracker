@@ -1,7 +1,12 @@
+import { Check, Minus } from "lucide-react";
 import NumberField from "./NumberField";
+import { formatStamp, shortActor } from "../dateUtils";
 
-export default function MealRow({ meta, value, onChange }) {
+export default function MealRow({ meta, value, onChange, showAudit = false, viewerEmail = null }) {
   const { Icon } = meta;
+  const stamped = showAudit && value.updatedAt;
+  const who = shortActor(value.updatedBy, viewerEmail);
+
   return (
     <div className={"meal " + (value.taken ? "is-taken" : "not-taken")}>
       <div className="meal-icon"><Icon size={22} strokeWidth={2.2} /></div>
@@ -21,6 +26,16 @@ export default function MealRow({ meta, value, onChange }) {
         />
         <span className="slider"></span>
       </label>
+      {/* Its own full-width row — the info column is far too narrow on a phone. */}
+      {stamped && (
+        <div className={"meal-audit" + (value.taken ? " on" : "")}>
+          {value.taken ? <Check size={12} strokeWidth={3} /> : <Minus size={12} strokeWidth={3} />}
+          <span>
+            {value.taken ? "marked" : "cleared"}
+            {who ? ` by ${who}` : ""} · {formatStamp(value.updatedAt)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

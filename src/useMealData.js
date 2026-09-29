@@ -12,12 +12,17 @@ import { todayKey, monthTag, isSunday } from "./dateUtils";
  * `enabled: false` skips every call — providers have no meals of their own, so
  * there is nothing to fetch and no settings row to create for them.
  */
-export default function useMealData(dataApi, { onError, seedRates = false, enabled = true } = {}) {
+export default function useMealData(dataApi, { onError, seedRates = false, enabled = true, actorEmail = null } = {}) {
   const [rates, setRates] = useState(() => cloneRates(FACTORY_RATES));
-  const [days, setDays] = useState({}); // { "YYYY-MM-DD": { morning: {taken, amount}, ... } }
-  const [dayStatus, setDayStatus] = useState({}); // date -> { noMeal, adjustment, note }
+  const [days, setDays] = useState({}); // { "YYYY-MM-DD": { morning: {taken, amount, updatedAt, updatedBy}, ... } }
+  const [dayStatus, setDayStatus] = useState({}); // date -> { noMeal, adjustment, note, updatedAt, updatedBy }
   const [loading, setLoading] = useState(true);
+  const [writeCount, setWriteCount] = useState(0); // bumps on every saved change, so the activity log can refresh
   const loadedMonths = useRef(new Set());
+
+  // Stamped on optimistic updates — the viewer is the one making the change.
+  const stamp = () => ({ updatedAt: new Date().toISOString(), updatedBy: actorEmail });
+  const saved = () => setWriteCount((n) => n + 1);
 
   // Keep the error reporter out of the callback deps — toasts are recreated freely.
   const errRef = useRef(onError);
@@ -46,6 +51,8 @@ export default function useMealData(dataApi, { onError, seedRates = false, enabl
       rec[m] = {
         taken: s ? !!s.taken : false,
         amount: s && s.amount != null ? Number(s.amount) : defaultRateFor(key, m),
+        updatedAt: (s && s.updatedAt) || null,
+        updatedBy: (s && s.updatedBy) || null,
       };
     }
     return rec;
@@ -85,7 +92,12 @@ export default function useMealData(dataApi, { onError, seedRates = false, enabl
         for (const row of entries || []) {
           next[row.date] = {
             ...(next[row.date] || {}),
-            [row.meal]: { taken: !!row.taken, amount: Number(row.amount) },
+            [row.meal]: {
+              taken: !!row.taken,
+              amount: Number(row.amount),
+              updatedAt: row.updatedAt || null,
+              updatedBy: row.updatedBy || null,
+            },
           };
         }
         return next;
@@ -109,17 +121,20 @@ export default function useMealData(dataApi, { onError, seedRates = false, enabl
   // ---- Mutations (optimistic, written through to the API) ----
   const setMeal = useCallback((key, meal, patch) => {
     const cur = (days[key] || {})[meal] || { taken: false, amount: defaultRateFor(key, meal) };
-    const nextVal = { ...cur, ...patch };
+    const nextVal = { ...cur, ...patch, ...stamp() };
     setDays((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), [meal]: nextVal } }));
     dataApi.saveMeal({ date: key, meal, taken: nextVal.taken, amount: nextVal.amount })
+      .then(saved)
       .catch(() => fail("Save failed — try again."));
-  }, [days, dataApi, defaultRateFor, fail]);
+  }, [days, dataApi, defaultRateFor, fail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateDayStatus = useCallback((key, patch) => {
-    const next = { ...statusFor(key), ...patch };
+    const next = { ...statusFor(key), ...patch, ...stamp() };
     setDayStatus((prev) => ({ ...prev, [key]: next }));
-    dataApi.setDayStatus(key, next).catch(() => fail("Couldn't save — try again."));
-  }, [statusFor, dataApi, fail]);
+    dataApi.setDayStatus(key, next)
+      .then(saved)
+      .catch(() => fail("Couldn't save — try again."));
+  }, [statusFor, dataApi, fail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveRates = useCallback((next) => {
     setRates(next);
@@ -133,7 +148,7 @@ export default function useMealData(dataApi, { onError, seedRates = false, enabl
   const resetRates = useCallback(() => saveRates(cloneRates(FACTORY_RATES)), [saveRates]);
 
   return {
-    rates, days, dayStatus, loading,
+    rates, days, dayStatus, loading, writeCount,
     recordFor, statusFor, defaultRateFor,
     ensureMonthLoaded, setMeal, updateDayStatus, updateRate, resetRates,
   };

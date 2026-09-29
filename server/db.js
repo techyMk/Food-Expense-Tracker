@@ -64,4 +64,25 @@ export async function initSchema() {
   )`;
   await sql`alter table day_status add column if not exists adjustment integer not null default 0`;
   await sql`alter table day_status add column if not exists note text`;
+
+  // ---- Audit trail ----
+  // Who last touched each row (rows written before this existed stay null)…
+  await sql`alter table meal_entries add column if not exists updated_by uuid references users(id) on delete set null`;
+  await sql`alter table day_status add column if not exists updated_by uuid references users(id) on delete set null`;
+  // …and the full history behind it. actor_email is denormalised so the trail
+  // still reads correctly after an account is removed.
+  await sql`create table if not exists entry_audit (
+    id          bigserial primary key,
+    user_id     uuid not null references users(id) on delete cascade,
+    actor_id    uuid references users(id) on delete set null,
+    actor_email text not null,
+    date        date not null,
+    kind        text not null check (kind in ('meal','day')),
+    meal        text,
+    before      jsonb,
+    after       jsonb not null,
+    at          timestamptz not null default now()
+  )`;
+  await sql`create index if not exists entry_audit_user_at_idx on entry_audit (user_id, at desc)`;
+  await sql`create index if not exists entry_audit_user_date_idx on entry_audit (user_id, date)`;
 }

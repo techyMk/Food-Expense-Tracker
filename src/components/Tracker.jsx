@@ -19,7 +19,12 @@ export default function Tracker({ user, onSignOut }) {
   const [membersNonce, setMembersNonce] = useState(0);
 
   const ownApi = useMemo(() => mealApi(null), []);
-  const data = useMealData(ownApi, { onError: toast, seedRates: !provider, enabled: !provider });
+  const data = useMealData(ownApi, {
+    onError: toast,
+    seedRates: !provider,
+    enabled: !provider,
+    actorEmail: user.email,
+  });
 
   function exportData() {
     const blob = new Blob([JSON.stringify({ rates: data.rates, days: data.days }, null, 2)], {

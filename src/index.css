@@ -487,6 +487,7 @@ h3 { font-size: 0.92rem; margin: 0 0 10px; color: var(--accent-deep); font-weigh
 .meal {
   display: flex;
   align-items: center;
+  flex-wrap: wrap; /* lets the audit stamp take a full-width row of its own */
   gap: 13px;
   padding: 12px;
   border-radius: var(--radius-sm);
@@ -611,6 +612,44 @@ th .tick, td .tick, .tick { color: var(--green); }
 }
 .linkish:hover { color: var(--accent-deep); }
 .linkish.danger { color: var(--danger); }
+
+/* ---- Audit trail ---- */
+.meal-audit {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.07);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.meal-audit svg { flex-shrink: 0; }
+.meal-audit.on { color: #3f8c65; }
+.meal-audit span { overflow: hidden; text-overflow: ellipsis; }
+
+.activity h2 { display: inline-flex; align-items: center; gap: 7px; }
+.activity-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.activity-item { display: flex; align-items: flex-start; gap: 11px; padding: 9px 2px; }
+.activity-item + .activity-item { border-top: 1px solid var(--line); }
+.activity-icon {
+  width: 26px; height: 26px;
+  border-radius: 9px;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  background: var(--tile);
+  color: var(--muted);
+}
+.activity-icon.on { background: var(--green-soft); color: var(--green); }
+.activity-icon.off { background: #f4ece0; color: var(--ink-soft); }
+.activity-text { min-width: 0; }
+.activity-what { display: block; font-size: 0.88rem; font-weight: 600; word-break: break-word; }
+.activity-meta { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 500; margin-top: 1px; word-break: break-word; }
+.activity .linkish { margin-top: 12px; }
 
 /* ---- Roles & admin panel ---- */
 .role-tag {

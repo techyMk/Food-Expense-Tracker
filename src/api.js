@@ -73,6 +73,7 @@ export function mealApi(userId) {
     saveSettings: (rates) => request(base + "/settings", { method: "PUT", body: { rates } }),
 
     getMeals: (month) => request(base + "/meals?month=" + month),
+    getActivity: (month) => request(base + "/activity?month=" + month),
     saveMeal: (entry) => request(base + "/meals", { method: "PUT", body: entry }),
     setDayStatus: (date, status) => request(base + "/day-status", { method: "PUT", body: { date, ...status } }),
   };

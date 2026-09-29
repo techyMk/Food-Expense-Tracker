@@ -206,47 +206,120 @@ async function readMonth(userId, month) {
   if (!/^\d{4}-\d{2}$/.test(String(month || ""))) throw new Bad(400, "Invalid month.");
   const start = month + "-01";
   const { rows } = await sql`
-    select to_char(date, 'YYYY-MM-DD') as date, meal, taken, amount
-      from meal_entries
-     where user_id = ${userId}
-       and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
+    select to_char(me.date, 'YYYY-MM-DD') as date, me.meal, me.taken, me.amount,
+           me.updated_at, u.email as updated_by
+      from meal_entries me
+      left join users u on u.id = me.updated_by
+     where me.user_id = ${userId}
+       and me.date >= ${start}::date and me.date < (${start}::date + interval '1 month')`;
   const { rows: statusRows } = await sql`
-    select to_char(date, 'YYYY-MM-DD') as date, no_meal, adjustment, note
-      from day_status
-     where user_id = ${userId}
-       and (no_meal = true or adjustment <> 0 or note is not null)
-       and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
+    select to_char(ds.date, 'YYYY-MM-DD') as date, ds.no_meal, ds.adjustment, ds.note,
+           ds.updated_at, u.email as updated_by
+      from day_status ds
+      left join users u on u.id = ds.updated_by
+     where ds.user_id = ${userId}
+       and (ds.no_meal = true or ds.adjustment <> 0 or ds.note is not null)
+       and ds.date >= ${start}::date and ds.date < (${start}::date + interval '1 month')`;
   const status = {};
   for (const s of statusRows) {
-    status[s.date] = { noMeal: !!s.no_meal, adjustment: Number(s.adjustment) || 0, note: s.note || "" };
+    status[s.date] = {
+      noMeal: !!s.no_meal,
+      adjustment: Number(s.adjustment) || 0,
+      note: s.note || "",
+      updatedAt: s.updated_at,
+      updatedBy: s.updated_by,
+    };
   }
-  return { entries: rows, status };
+  const entries = rows.map((r) => ({
+    date: r.date, meal: r.meal, taken: r.taken, amount: r.amount,
+    updatedAt: r.updated_at, updatedBy: r.updated_by,
+  }));
+  return { entries, status };
 }
 
-async function writeMeal(userId, body) {
+/**
+ * Upsert the row and append an audit entry in one statement. The `prev` CTE
+ * reads the pre-insert snapshot, and a data-modifying CTE always runs to
+ * completion, so `up` happens whether or not the audit row is written — it is
+ * skipped when nothing actually changed, which keeps idle re-saves out of the
+ * history.
+ */
+async function writeMeal(userId, body, actor) {
   const { date, meal } = body || {};
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Bad(400, "Invalid date.");
   if (!MEALS.includes(meal)) throw new Bad(400, "Invalid meal.");
   const taken = !!body.taken;
   const amount = clampInt(body.amount);
   await sql`
-    insert into meal_entries (user_id, date, meal, taken, amount, updated_at)
-    values (${userId}, ${date}, ${meal}, ${taken}, ${amount}, now())
-    on conflict (user_id, date, meal)
-    do update set taken = excluded.taken, amount = excluded.amount, updated_at = now()`;
+    with prev as (
+      select taken, amount from meal_entries
+       where user_id = ${userId} and date = ${date}::date and meal = ${meal}
+    ), up as (
+      insert into meal_entries (user_id, date, meal, taken, amount, updated_by, updated_at)
+      values (${userId}, ${date}, ${meal}, ${taken}, ${amount}, ${actor.id}, now())
+      on conflict (user_id, date, meal) do update set
+        taken = excluded.taken, amount = excluded.amount,
+        updated_by = excluded.updated_by, updated_at = now()
+      returning 1
+    )
+    insert into entry_audit (user_id, actor_id, actor_email, date, kind, meal, before, after)
+    select ${userId}, ${actor.id}, ${actor.email}, ${date}::date, 'meal', ${meal},
+           (select jsonb_build_object('taken', taken, 'amount', amount) from prev),
+           jsonb_build_object('taken', ${taken}::boolean, 'amount', ${amount}::int)
+     where (select taken from prev) is distinct from ${taken}::boolean
+        or (select amount from prev) is distinct from ${amount}::int`;
 }
 
-async function writeDayStatus(userId, body) {
+async function writeDayStatus(userId, body, actor) {
   const { date } = body || {};
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Bad(400, "Invalid date.");
   const noMeal = !!body.noMeal;
   const adjustment = Math.round(Number(body.adjustment) || 0);
   const note = body.note ? String(body.note).slice(0, 200) : null;
   await sql`
-    insert into day_status (user_id, date, no_meal, adjustment, note, updated_at)
-    values (${userId}, ${date}, ${noMeal}, ${adjustment}, ${note}, now())
-    on conflict (user_id, date) do update set
-      no_meal = excluded.no_meal, adjustment = excluded.adjustment, note = excluded.note, updated_at = now()`;
+    with prev as (
+      select no_meal, adjustment, note from day_status
+       where user_id = ${userId} and date = ${date}::date
+    ), up as (
+      insert into day_status (user_id, date, no_meal, adjustment, note, updated_by, updated_at)
+      values (${userId}, ${date}, ${noMeal}, ${adjustment}, ${note}, ${actor.id}, now())
+      on conflict (user_id, date) do update set
+        no_meal = excluded.no_meal, adjustment = excluded.adjustment, note = excluded.note,
+        updated_by = excluded.updated_by, updated_at = now()
+      returning 1
+    )
+    insert into entry_audit (user_id, actor_id, actor_email, date, kind, before, after)
+    select ${userId}, ${actor.id}, ${actor.email}, ${date}::date, 'day',
+           (select jsonb_build_object('noMeal', no_meal, 'adjustment', adjustment, 'note', note) from prev),
+           jsonb_build_object('noMeal', ${noMeal}::boolean, 'adjustment', ${adjustment}::int, 'note', ${note}::text)
+     where (select no_meal from prev) is distinct from ${noMeal}::boolean
+        or (select adjustment from prev) is distinct from ${adjustment}::int
+        or (select note from prev) is distinct from ${note}::text`;
+}
+
+/** The change history for one person, newest first. */
+async function readActivity(userId, month, limit) {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) throw new Bad(400, "Invalid month.");
+  const start = month + "-01";
+  const { rows } = await sql`
+    select id, actor_email, to_char(date, 'YYYY-MM-DD') as date, kind, meal, before, after, at
+      from entry_audit
+     where user_id = ${userId}
+       and date >= ${start}::date and date < (${start}::date + interval '1 month')
+     order by at desc
+     limit ${Math.min(Math.max(Number(limit) || 100, 1), 300)}`;
+  return {
+    events: rows.map((r) => ({
+      id: String(r.id),
+      actor: r.actor_email,
+      date: r.date,
+      kind: r.kind,
+      meal: r.meal,
+      before: r.before,
+      after: r.after,
+      at: r.at,
+    })),
+  };
 }
 
 // ---- Settings (default rates) ----
@@ -265,13 +338,17 @@ app.get("/api/meals", auth, wrap(async (req, res) => {
 }));
 
 app.put("/api/day-status", auth, wrap(async (req, res) => {
-  await writeDayStatus(req.user.id, req.body);
+  await writeDayStatus(req.user.id, req.body, req.user);
   res.json({ ok: true });
 }));
 
 app.put("/api/meals", auth, wrap(async (req, res) => {
-  await writeMeal(req.user.id, req.body);
+  await writeMeal(req.user.id, req.body, req.user);
   res.json({ ok: true });
+}));
+
+app.get("/api/activity", auth, wrap(async (req, res) => {
+  res.json(await readActivity(req.user.id, req.query.month, req.query.limit));
 }));
 
 // ---- Admin: members ----
@@ -290,13 +367,17 @@ app.get("/api/admin/users/:id/meals", auth, managerOnly, loadTarget, wrap(async 
 }));
 
 app.put("/api/admin/users/:id/meals", auth, managerOnly, loadTarget, wrap(async (req, res) => {
-  await writeMeal(req.target.id, req.body);
+  await writeMeal(req.target.id, req.body, req.actor);
   res.json({ ok: true });
 }));
 
 app.put("/api/admin/users/:id/day-status", auth, managerOnly, loadTarget, wrap(async (req, res) => {
-  await writeDayStatus(req.target.id, req.body);
+  await writeDayStatus(req.target.id, req.body, req.actor);
   res.json({ ok: true });
+}));
+
+app.get("/api/admin/users/:id/activity", auth, managerOnly, loadTarget, wrap(async (req, res) => {
+  res.json(await readActivity(req.target.id, req.query.month, req.query.limit));
 }));
 
 /** Member list with this month's spend, so the panel is useful at a glance. */

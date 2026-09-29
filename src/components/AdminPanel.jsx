@@ -209,7 +209,7 @@ export default function AdminPanel({ me, resetSignal }) {
   // A promotion to provider while their board is open drops you back to the list.
   const openMember = users.find((u) => u.id === openId && eats(u));
   if (openMember) {
-    return <MemberView member={openMember} onBack={() => { setOpenId(null); load(); }} />;
+    return <MemberView member={openMember} viewer={me} onBack={() => { setOpenId(null); load(); }} />;
   }
 
   function shiftMonth(delta) {

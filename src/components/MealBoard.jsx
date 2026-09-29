@@ -1,25 +1,27 @@
 import { useState } from "react";
 import { Check, X, Ban } from "lucide-react";
 import { MEALS, MEAL_META, DAY_NAMES, MONTH_NAMES } from "../constants";
-import { todayKey, dateFromKey, keyFromDate, monthTag, isSunday } from "../dateUtils";
+import { todayKey, dateFromKey, keyFromDate, monthTag, isSunday, formatStamp, shortActor } from "../dateUtils";
 import DayNav from "./DayNav";
 import MealRow from "./MealRow";
 import RatesPanel from "./RatesPanel";
 import MonthSummary from "./MonthSummary";
 import MonthlyReport from "./MonthlyReport";
 import DayExtra from "./DayExtra";
+import ActivityLog from "./ActivityLog";
 
 /**
  * The day editor + monthly report for one person. Driven entirely by a
  * `useMealData` result, so it works the same for your own meals and — in the
  * admin panel — for another member's.
  */
-export default function MealBoard({ data, showRates = false }) {
+export default function MealBoard({ data, showRates = false, showAudit = false, viewerEmail = null, dataApi = null }) {
   const {
-    rates, days, dayStatus, recordFor, statusFor,
+    rates, days, dayStatus, recordFor, statusFor, writeCount,
     ensureMonthLoaded, setMeal, updateDayStatus, updateRate, resetRates,
   } = data;
 
+  const audit = showAudit && !!dataApi;
   const [selectedDate, setSelectedDate] = useState(todayKey());
   const [view, setView] = useState("daily"); // "daily" | "report"
   const [reportMonth, setReportMonth] = useState(() => monthTag(todayKey()));
@@ -141,6 +143,11 @@ export default function MealBoard({ data, showRates = false }) {
                 <div>
                   <div className="no-meal-title">No meals provided today</div>
                   <div className="no-meal-sub">Nothing to log · ₹0 · no reminder tonight</div>
+                  {showAudit && selStatus.updatedAt && (
+                    <div className="no-meal-sub">
+                      set by {shortActor(selStatus.updatedBy, viewerEmail) || "someone"} · {formatStamp(selStatus.updatedAt)}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -151,6 +158,8 @@ export default function MealBoard({ data, showRates = false }) {
                     meta={MEAL_META[m]}
                     value={selectedRec[m]}
                     onChange={(patch) => setMeal(selectedDate, m, patch)}
+                    showAudit={showAudit}
+                    viewerEmail={viewerEmail}
                   />
                 ))}
                 <DayExtra
@@ -165,7 +174,12 @@ export default function MealBoard({ data, showRates = false }) {
               <div>
                 <span>Spent this day</span>
                 {!isNoMeal && adjustment !== 0 && (
-                  <div className="day-total-sub">includes ₹{adjustment} special charge</div>
+                  <div className="day-total-sub">
+                    includes ₹{adjustment} special charge
+                    {showAudit && selStatus.updatedAt && (
+                      <> · set by {shortActor(selStatus.updatedBy, viewerEmail) || "someone"}, {formatStamp(selStatus.updatedAt)}</>
+                    )}
+                  </div>
                 )}
               </div>
               <strong>₹{selDayTotal}</strong>
@@ -180,17 +194,37 @@ export default function MealBoard({ data, showRates = false }) {
             rows={rows}
             onSelect={(k) => { goToDate(k); window.scrollTo({ top: 0, behavior: "smooth" }); }}
           />
+
+          {audit && (
+            <ActivityLog
+              dataApi={dataApi}
+              month={monthTag(selectedDate)}
+              viewerEmail={viewerEmail}
+              refreshKey={writeCount}
+            />
+          )}
         </>
       ) : (
-        <MonthlyReport
-          monthKey={reportMonth}
-          days={days}
-          dayStatus={dayStatus}
-          recordFor={recordFor}
-          onPrev={() => shiftReportMonth(-1)}
-          onNext={() => shiftReportMonth(1)}
-          onPickMonth={goToReportMonth}
-        />
+        <>
+          <MonthlyReport
+            monthKey={reportMonth}
+            days={days}
+            dayStatus={dayStatus}
+            recordFor={recordFor}
+            onPrev={() => shiftReportMonth(-1)}
+            onNext={() => shiftReportMonth(1)}
+            onPickMonth={goToReportMonth}
+          />
+
+          {audit && (
+            <ActivityLog
+              dataApi={dataApi}
+              month={reportMonth}
+              viewerEmail={viewerEmail}
+              refreshKey={writeCount}
+            />
+          )}
+        </>
       )}
     </>
   );

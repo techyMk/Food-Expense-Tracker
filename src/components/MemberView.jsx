@@ -6,13 +6,13 @@ import useMealData from "../useMealData";
 import MealBoard from "./MealBoard";
 
 /** One member's meals, opened from the admin panel. Fully editable. */
-export default function MemberView({ member, onBack }) {
+export default function MemberView({ member, viewer, onBack }) {
   const toast = useToast();
   const [showRates, setShowRates] = useState(false);
 
   // Re-created only when the member changes, so the hook resets its cache then.
   const dataApi = useMemo(() => mealApi(member.id), [member.id]);
-  const data = useMealData(dataApi, { onError: toast });
+  const data = useMealData(dataApi, { onError: toast, actorEmail: viewer?.email });
 
   return (
     <>
@@ -46,7 +46,13 @@ export default function MemberView({ member, onBack }) {
       {data.loading ? (
         <p className="muted center">Loading their meals…</p>
       ) : (
-        <MealBoard data={data} showRates={showRates} />
+        <MealBoard
+          data={data}
+          showRates={showRates}
+          showAudit
+          viewerEmail={viewer?.email}
+          dataApi={dataApi}
+        />
       )}
     </>
   );
