@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MEALS, FACTORY_RATES, cloneRates, mergeRates } from "./constants";
+import { MEALS, FACTORY_RATES, cloneRates, mergeRates, ratesForDate } from "./constants";
 import { todayKey, monthTag, isSunday } from "./dateUtils";
 
 /**
@@ -38,10 +38,10 @@ export default function useMealData(dataApi, { onError, seedRates = false, enabl
     setLoading(true);
   }, [dataApi]);
 
-  const defaultRateFor = useCallback(
-    (key, meal) => Number((isSunday(key) ? rates.sunday : rates.weekday)[meal]) || 0,
-    [rates]
-  );
+  const defaultRateFor = useCallback((key, meal) => {
+    const table = ratesForDate(key, rates);
+    return Number((isSunday(key) ? table.sunday : table.weekday)[meal]) || 0;
+  }, [rates]);
 
   const recordFor = useCallback((key) => {
     const stored = days[key];

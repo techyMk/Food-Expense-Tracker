@@ -1,4 +1,4 @@
-import { MEALS, MEAL_META } from "../constants";
+import { MEALS, MEAL_META, FACTORY_RATES, LEGACY_RATES } from "../constants";
 import NumberField from "./NumberField";
 
 function RateColumn({ title, kind, rates, onUpdate }) {
@@ -26,8 +26,13 @@ export default function RatesPanel({ rates, onUpdate, onReset }) {
         <RateColumn title="Mon – Sat" kind="weekday" rates={rates.weekday} onUpdate={onUpdate} />
         <RateColumn title="Sunday" kind="sunday" rates={rates.sunday} onUpdate={onUpdate} />
       </div>
+      <p className="muted">
+        Applies from 1 September 2026. Earlier days pre-fill at the old
+        ₹{LEGACY_RATES.weekday.morning} / ₹{LEGACY_RATES.weekday.afternoon} / ₹{LEGACY_RATES.weekday.night} rates,
+        and days already logged keep the amount they were saved with.
+      </p>
       <button className="btn btn-ghost small" type="button" onClick={onReset}>
-        Reset to ₹35 / ₹50 / ₹35
+        Reset to ₹{FACTORY_RATES.weekday.morning} / ₹{FACTORY_RATES.weekday.afternoon} / ₹{FACTORY_RATES.weekday.night}
       </button>
     </section>
   );
