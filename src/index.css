@@ -35,13 +35,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---- Branded loading screen ---- */
+/* ---- Branded loading screen ----
+   Flat --bg, matching the manifest's background_color: on Android this screen
+   takes over from the system splash, and a matching backdrop plus the same
+   rounded badge makes that a continuation rather than a second screen. */
 .app-loader {
   position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
-  background: linear-gradient(180deg, #f9f4ec 0%, var(--bg) 55%, var(--bg-2) 100%);
+  background: var(--bg);
 }
 .loader-stack { display: flex; flex-direction: column; align-items: center; gap: 18px; }
 .loader-ring { position: relative; width: 80px; height: 80px; display: grid; place-items: center; }
@@ -68,6 +71,14 @@ body {
 @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 @media (prefers-reduced-motion: reduce) {
   .loader-ring::before, .loader-badge { animation: none; }
+}
+/* Phones get a bigger badge, closer to the size Android draws on the splash,
+   so the handover doesn't jump. */
+@media (max-width: 560px) {
+  .loader-ring { width: 120px; height: 120px; }
+  .loader-ring::before { border-width: 4px; }
+  .loader-badge { width: 84px; height: 84px; border-radius: 26px; }
+  .loader-badge svg { width: 40px; height: 40px; }
 }
 
 .app {

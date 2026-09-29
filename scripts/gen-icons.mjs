@@ -27,6 +27,12 @@ const svg = (rect) =>
 
 const rounded = svg(`<rect width="512" height="512" rx="112" fill="url(#g)"/>`);
 const fullBleed = svg(`<rect width="512" height="512" fill="url(#g)"/>`);
+// Transparent corners, rounded to the same ratio as the in-app badge (17/56).
+// Android draws its PWA splash from the "any"-purpose icon over background_color,
+// so this one shows up there as the badge the loader then spins around — rather
+// than as a hard-edged square. The full-bleed pair stays "maskable" for the
+// launcher, which applies its own mask.
+const badge = svg(`<rect width="512" height="512" rx="155" fill="url(#g)"/>`);
 
 writeFileSync("public/favicon.svg", rounded);
 
@@ -35,4 +41,8 @@ await sharp(src).resize(180, 180).png().toFile("public/apple-touch-icon.png");
 await sharp(src).resize(192, 192).png().toFile("public/icon-192.png");
 await sharp(src).resize(512, 512).png().toFile("public/icon-512.png");
 
-console.log("Wrote public/favicon.svg, apple-touch-icon.png, icon-192.png, icon-512.png");
+const badgeSrc = Buffer.from(badge);
+await sharp(badgeSrc).resize(192, 192).png().toFile("public/icon-badge-192.png");
+await sharp(badgeSrc).resize(512, 512).png().toFile("public/icon-badge-512.png");
+
+console.log("Wrote public/favicon.svg, apple-touch-icon.png, icon-{192,512}.png, icon-badge-{192,512}.png");
