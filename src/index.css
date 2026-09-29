@@ -250,6 +250,10 @@ h3 { font-size: 0.92rem; margin: 0 0 10px; color: var(--accent-deep); font-weigh
 }
 .tab {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   border: none;
   background: transparent;
   color: var(--ink-soft);
@@ -261,6 +265,9 @@ h3 { font-size: 0.92rem; margin: 0 0 10px; color: var(--accent-deep); font-weigh
   cursor: pointer;
   transition: all 0.18s;
 }
+.tab svg { flex-shrink: 0; }
+/* The manager-level switch sits above the per-view tabs — tint it apart. */
+.tabs-top { background: #e5dac4; }
 .tab:hover { color: var(--accent-deep); }
 .tab.active { background: var(--card); color: var(--accent-deep); box-shadow: var(--shadow-sm); }
 
@@ -605,6 +612,127 @@ th .tick, td .tick, .tick { color: var(--green); }
 .linkish:hover { color: var(--accent-deep); }
 .linkish.danger { color: var(--danger); }
 
+/* ---- Roles & admin panel ---- */
+.role-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 7px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.role-tag.self { color: #166c41; background: var(--green-soft); }
+
+.admin-head-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.admin-head-top h2 { margin-bottom: 2px; }
+.admin-month {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 15px;
+  background: var(--tile);
+  border: 1px solid var(--line);
+}
+.admin-month-label { text-align: center; line-height: 1.35; }
+.admin-month-label strong { display: block; font-size: 1rem; font-weight: 800; color: var(--accent-deep); }
+.admin-month-label .muted { font-size: 0.8rem; }
+.btn-round.small-round { width: 38px; height: 38px; background: var(--card); }
+
+.member-list { list-style: none; margin: 0; padding: 0; }
+.member-row + .member-row { border-top: 1px solid var(--line); }
+.member-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 6px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.14s;
+}
+.member-main:hover { background: var(--tile); }
+/* Providers have no meal board to open — their row is a label, not a link. */
+.member-main.is-static { cursor: default; }
+.member-main.is-static:hover { background: transparent; }
+.member-avatar {
+  width: 40px; height: 40px;
+  border-radius: 13px;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.member-text { flex: 1; min-width: 0; }
+.member-email { display: block; font-weight: 700; word-break: break-word; }
+.member-sub { display: block; font-size: 0.78rem; color: var(--muted); font-weight: 500; margin-top: 1px; }
+.member-spent { font-weight: 800; color: var(--accent-deep); flex-shrink: 0; }
+.member-chevron { color: var(--muted); flex-shrink: 0; }
+.member-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 0 6px 12px 58px;
+}
+.member-tools .linkish { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; }
+
+/* Add-member form */
+.add-member h3 { margin-bottom: 12px; }
+.add-member-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.add-member-grid .field { margin-bottom: 4px; }
+.add-member-actions { display: flex; justify-content: flex-end; gap: 8px; margin: 12px 0 8px; }
+.role-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.role-option {
+  display: block;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  background: var(--tile);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.role-option:hover { border-color: var(--muted); }
+.role-option strong { display: block; font-size: 0.92rem; }
+.role-option span { display: block; font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.role-option.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 3px rgba(239, 115, 34, 0.12);
+}
+.role-option.on strong { color: var(--accent-deep); }
+
+/* Member being edited */
+.member-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px; }
+.member-bar-who { display: flex; align-items: center; gap: 11px; flex: 1; min-width: 0; }
+.member-bar-text { min-width: 0; }
+.member-bar-email { font-weight: 700; word-break: break-word; }
+.member-bar-text .muted { font-size: 0.78rem; }
+.editing-note {
+  display: flex; align-items: center; gap: 8px;
+  margin: -6px 0 14px;
+  padding: 9px 13px;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  border: 1px solid #f6dcc4;
+}
+.editing-icon { display: grid; place-items: center; flex-shrink: 0; }
+
 /* ---- Toast ---- */
 .toast {
   position: fixed;
@@ -631,6 +759,12 @@ th .tick, td .tick, .tick { color: var(--green); }
   h1 { font-size: 1.25rem; }
   .app-header { gap: 8px; }
   .header-actions { width: 100%; justify-content: flex-end; }
+  .add-member-grid, .role-picker { grid-template-columns: 1fr; }
+  .member-tools { padding-left: 6px; }
+  /* Give the member's name its own full-width row above the buttons.
+     flex-basis (not width) — the `flex: 1` basis of 0 would otherwise win. */
+  .member-bar { gap: 10px; justify-content: space-between; }
+  .member-bar-who { order: -1; flex: 1 0 100%; }
 }
 
 @media (max-width: 380px) {

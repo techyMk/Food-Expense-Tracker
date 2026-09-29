@@ -48,14 +48,37 @@ export const api = {
   },
   me: () => request("/me"),
 
-  getSettings: () => request("/settings"),
-  saveSettings: (rates) => request("/settings", { method: "PUT", body: { rates } }),
-
-  getMeals: (month) => request("/meals?month=" + month),
-  saveMeal: (entry) => request("/meals", { method: "PUT", body: entry }),
-  setDayStatus: (date, status) => request("/day-status", { method: "PUT", body: { date, ...status } }),
+  ...mealApi(null),
 
   pushSubscribe: (subscription) => request("/push/subscribe", { method: "POST", body: { subscription } }),
   pushUnsubscribe: (endpoint) => request("/push/unsubscribe", { method: "POST", body: { endpoint } }),
   pushTest: () => request("/push/test", { method: "POST" }),
+
+  admin: {
+    listUsers: (month) => request("/admin/users?month=" + month),
+    createUser: (body) => request("/admin/users", { method: "POST", body }),
+    updateUser: (id, body) => request(`/admin/users/${id}`, { method: "PATCH", body }),
+    deleteUser: (id) => request(`/admin/users/${id}`, { method: "DELETE" }),
+  },
 };
+
+/**
+ * The meal/settings calls, aimed either at the signed-in user (`userId = null`)
+ * or — for admins and the superuser — at another member. Same shapes either way.
+ */
+export function mealApi(userId) {
+  const base = userId ? `/admin/users/${userId}` : "";
+  return {
+    getSettings: () => request(base + "/settings"),
+    saveSettings: (rates) => request(base + "/settings", { method: "PUT", body: { rates } }),
+
+    getMeals: (month) => request(base + "/meals?month=" + month),
+    saveMeal: (entry) => request(base + "/meals", { method: "PUT", body: entry }),
+    setDayStatus: (date, status) => request(base + "/day-status", { method: "PUT", body: { date, ...status } }),
+  };
+}
+
+export const isManager = (user) => user?.role === "admin" || user?.role === "superuser";
+export const isSuper = (user) => user?.role === "superuser";
+/** Providers serve the food — they manage everyone's entries but log none of their own. */
+export const isProvider = (user) => user?.role === "admin";

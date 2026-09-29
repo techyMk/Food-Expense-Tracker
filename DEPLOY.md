@@ -48,6 +48,7 @@ In the Vercel project → **Settings → Environment Variables**, add these for 
 |------|-------|
 | `NEON_DATABASE_URL` | your Neon **pooled** connection string (host has `-pooler`) |
 | `JWT_SECRET` | a long random string (e.g. from `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`) |
+| `SUPERUSER_EMAIL` | the account that manages members and their entries (defaults to `mani18012003@gmail.com`) |
 | `GOOGLE_CLIENT_ID` | your Google OAuth client ID (only if using Google sign-in) |
 | `VITE_GOOGLE_CLIENT_ID` | same value as `GOOGLE_CLIENT_ID` |
 | `VAPID_PUBLIC_KEY` | for push reminders (only if using reminders) |

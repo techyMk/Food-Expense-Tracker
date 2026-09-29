@@ -6,11 +6,13 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import webpush from "web-push";
-import { sql, isConfigured, initSchema } from "./db.js";
+import { sql, isConfigured, initSchema, SUPER_EMAIL } from "./db.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || "dev-insecure-secret-change-me";
 const MEALS = ["morning", "afternoon", "night"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isManager = (role) => role === "admin" || role === "superuser";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const googleEnabled = !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.includes("YOUR-CLIENT-ID");
@@ -40,9 +42,23 @@ app.use(express.json());
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const clampInt = (v) => Math.max(0, Math.round(Number(v) || 0));
 
+/** Thrown from helpers to answer with a specific status instead of a 500. */
+class Bad extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
 function issue(user) {
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "30d" });
-  return { token, user: { id: user.id, email: user.email } };
+  return { token, user: { id: user.id, email: user.email, role: user.role || "user" } };
+}
+
+/** The configured superuser email always owns the superuser role, however it signed up. */
+async function ensureSuper(user) {
+  if (SUPER_EMAIL && user.email === SUPER_EMAIL && user.role !== "superuser") {
+    await sql`update users set role = 'superuser' where id = ${user.id}`;
+    user.role = "superuser";
+  }
+  return user;
 }
 
 function auth(req, res, next) {
@@ -56,6 +72,37 @@ function auth(req, res, next) {
     res.status(401).json({ error: "Session expired — sign in again." });
   }
 }
+
+/** Roles live in the DB, never in the token — a demotion takes effect immediately. */
+const managerOnly = wrap(async (req, res, next) => {
+  const { rows } = await sql`select id, email, role from users where id = ${req.user.id}`;
+  if (!rows[0]) return res.status(401).json({ error: "Your account no longer exists." });
+  req.actor = await ensureSuper(rows[0]);
+  if (!isManager(req.actor.role)) return res.status(403).json({ error: "You don't have member access." });
+  next();
+});
+
+const superOnly = (req, res, next) => {
+  if (req.actor.role !== "superuser") {
+    return res.status(403).json({ error: "Only the superuser can do that." });
+  }
+  next();
+};
+
+/** Loads :id into req.target and checks the actor is allowed to touch that member. */
+const loadTarget = wrap(async (req, res, next) => {
+  const id = String(req.params.id || "");
+  if (!UUID_RE.test(id)) return res.status(400).json({ error: "Invalid member id." });
+  const { rows } = await sql`select id, email, role from users where id = ${id}`;
+  const target = rows[0];
+  if (!target) return res.status(404).json({ error: "No such member." });
+  // Admins reach normal members only; the superuser reaches everyone.
+  if (req.actor.role !== "superuser" && target.role !== "user") {
+    return res.status(403).json({ error: "You can only manage normal members." });
+  }
+  req.target = target;
+  next();
+});
 
 // ---- Health (frontend uses this to decide setup vs app) ----
 app.get("/api/health", (req, res) => {
@@ -83,10 +130,11 @@ app.post("/api/auth/signup", wrap(async (req, res) => {
     return res.status(400).json({ error: "Enter an email and a password of at least 6 characters." });
   }
   const hash = await bcrypt.hash(password, 10);
+  const role = email === SUPER_EMAIL ? "superuser" : "user";
   try {
     const { rows } = await sql`
-      insert into users (email, password_hash) values (${email}, ${hash})
-      returning id, email`;
+      insert into users (email, password_hash, role) values (${email}, ${hash}, ${role})
+      returning id, email, role`;
     res.json(issue(rows[0]));
   } catch (e) {
     if (e.code === "23505" || /duplicate key/i.test(e.message || "")) {
@@ -99,12 +147,12 @@ app.post("/api/auth/signup", wrap(async (req, res) => {
 app.post("/api/auth/login", wrap(async (req, res) => {
   const email = String(req.body?.email || "").trim().toLowerCase();
   const password = String(req.body?.password || "");
-  const { rows } = await sql`select id, email, password_hash from users where email = ${email}`;
+  const { rows } = await sql`select id, email, role, password_hash from users where email = ${email}`;
   const u = rows[0];
   if (!u || !u.password_hash || !(await bcrypt.compare(password, u.password_hash))) {
     return res.status(401).json({ error: "Wrong email or password." });
   }
-  res.json(issue(u));
+  res.json(issue(await ensureSuper(u)));
 }));
 
 app.post("/api/auth/google", wrap(async (req, res) => {
@@ -125,81 +173,232 @@ app.post("/api/auth/google", wrap(async (req, res) => {
     return res.status(401).json({ error: "Your Google account has no verified email." });
   }
 
+  const role = email === SUPER_EMAIL ? "superuser" : "user";
   const { rows } = await sql`
-    insert into users (email, google_sub) values (${email}, ${payload.sub})
+    insert into users (email, google_sub, role) values (${email}, ${payload.sub}, ${role})
     on conflict (email) do update set google_sub = coalesce(users.google_sub, excluded.google_sub)
-    returning id, email`;
-  res.json(issue(rows[0]));
+    returning id, email, role`;
+  res.json(issue(await ensureSuper(rows[0])));
 }));
 
-app.get("/api/me", auth, (req, res) => {
-  res.json({ user: { id: req.user.id, email: req.user.email } });
-});
-
-// ---- Settings (default rates) ----
-app.get("/api/settings", auth, wrap(async (req, res) => {
-  const { rows } = await sql`select rates from user_settings where user_id = ${req.user.id}`;
-  res.json({ rates: rows[0] ? rows[0].rates : null });
+app.get("/api/me", auth, wrap(async (req, res) => {
+  const { rows } = await sql`select id, email, role from users where id = ${req.user.id}`;
+  if (!rows[0]) return res.status(401).json({ error: "Your account no longer exists." });
+  const u = await ensureSuper(rows[0]);
+  res.json({ user: { id: u.id, email: u.email, role: u.role } });
 }));
 
-app.put("/api/settings", auth, wrap(async (req, res) => {
-  const rates = req.body?.rates;
-  if (!rates || typeof rates !== "object") return res.status(400).json({ error: "Invalid rates." });
+// ---- Shared data helpers (used both for "me" and, by managers, for another member) ----
+async function readSettings(userId) {
+  const { rows } = await sql`select rates from user_settings where user_id = ${userId}`;
+  return rows[0] ? rows[0].rates : null;
+}
+
+async function writeSettings(userId, rates) {
+  if (!rates || typeof rates !== "object") throw new Bad(400, "Invalid rates.");
   await sql`
     insert into user_settings (user_id, rates, updated_at)
-    values (${req.user.id}, ${JSON.stringify(rates)}::jsonb, now())
+    values (${userId}, ${JSON.stringify(rates)}::jsonb, now())
     on conflict (user_id) do update set rates = excluded.rates, updated_at = now()`;
-  res.json({ ok: true });
-}));
+}
 
-// ---- Meal entries ----
-app.get("/api/meals", auth, wrap(async (req, res) => {
-  const month = String(req.query.month || ""); // "YYYY-MM"
-  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "Invalid month." });
+async function readMonth(userId, month) {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) throw new Bad(400, "Invalid month.");
   const start = month + "-01";
   const { rows } = await sql`
     select to_char(date, 'YYYY-MM-DD') as date, meal, taken, amount
       from meal_entries
-     where user_id = ${req.user.id}
+     where user_id = ${userId}
        and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
   const { rows: statusRows } = await sql`
     select to_char(date, 'YYYY-MM-DD') as date, no_meal, adjustment, note
       from day_status
-     where user_id = ${req.user.id}
+     where user_id = ${userId}
        and (no_meal = true or adjustment <> 0 or note is not null)
        and date >= ${start}::date and date < (${start}::date + interval '1 month')`;
   const status = {};
   for (const s of statusRows) {
     status[s.date] = { noMeal: !!s.no_meal, adjustment: Number(s.adjustment) || 0, note: s.note || "" };
   }
-  res.json({ entries: rows, status });
+  return { entries: rows, status };
+}
+
+async function writeMeal(userId, body) {
+  const { date, meal } = body || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Bad(400, "Invalid date.");
+  if (!MEALS.includes(meal)) throw new Bad(400, "Invalid meal.");
+  const taken = !!body.taken;
+  const amount = clampInt(body.amount);
+  await sql`
+    insert into meal_entries (user_id, date, meal, taken, amount, updated_at)
+    values (${userId}, ${date}, ${meal}, ${taken}, ${amount}, now())
+    on conflict (user_id, date, meal)
+    do update set taken = excluded.taken, amount = excluded.amount, updated_at = now()`;
+}
+
+async function writeDayStatus(userId, body) {
+  const { date } = body || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) throw new Bad(400, "Invalid date.");
+  const noMeal = !!body.noMeal;
+  const adjustment = Math.round(Number(body.adjustment) || 0);
+  const note = body.note ? String(body.note).slice(0, 200) : null;
+  await sql`
+    insert into day_status (user_id, date, no_meal, adjustment, note, updated_at)
+    values (${userId}, ${date}, ${noMeal}, ${adjustment}, ${note}, now())
+    on conflict (user_id, date) do update set
+      no_meal = excluded.no_meal, adjustment = excluded.adjustment, note = excluded.note, updated_at = now()`;
+}
+
+// ---- Settings (default rates) ----
+app.get("/api/settings", auth, wrap(async (req, res) => {
+  res.json({ rates: await readSettings(req.user.id) });
+}));
+
+app.put("/api/settings", auth, wrap(async (req, res) => {
+  await writeSettings(req.user.id, req.body?.rates);
+  res.json({ ok: true });
+}));
+
+// ---- Meal entries ----
+app.get("/api/meals", auth, wrap(async (req, res) => {
+  res.json(await readMonth(req.user.id, req.query.month));
 }));
 
 app.put("/api/day-status", auth, wrap(async (req, res) => {
-  const { date } = req.body || {};
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return res.status(400).json({ error: "Invalid date." });
-  const noMeal = !!req.body.noMeal;
-  const adjustment = Math.round(Number(req.body.adjustment) || 0);
-  const note = req.body.note ? String(req.body.note).slice(0, 200) : null;
-  await sql`
-    insert into day_status (user_id, date, no_meal, adjustment, note, updated_at)
-    values (${req.user.id}, ${date}, ${noMeal}, ${adjustment}, ${note}, now())
-    on conflict (user_id, date) do update set
-      no_meal = excluded.no_meal, adjustment = excluded.adjustment, note = excluded.note, updated_at = now()`;
+  await writeDayStatus(req.user.id, req.body);
   res.json({ ok: true });
 }));
 
 app.put("/api/meals", auth, wrap(async (req, res) => {
-  const { date, meal } = req.body || {};
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return res.status(400).json({ error: "Invalid date." });
-  if (!MEALS.includes(meal)) return res.status(400).json({ error: "Invalid meal." });
-  const taken = !!req.body.taken;
-  const amount = clampInt(req.body.amount);
-  await sql`
-    insert into meal_entries (user_id, date, meal, taken, amount, updated_at)
-    values (${req.user.id}, ${date}, ${meal}, ${taken}, ${amount}, now())
-    on conflict (user_id, date, meal)
-    do update set taken = excluded.taken, amount = excluded.amount, updated_at = now()`;
+  await writeMeal(req.user.id, req.body);
+  res.json({ ok: true });
+}));
+
+// ---- Admin: members ----
+// Same shapes as the routes above, but addressed at another member.
+app.get("/api/admin/users/:id/settings", auth, managerOnly, loadTarget, wrap(async (req, res) => {
+  res.json({ rates: await readSettings(req.target.id) });
+}));
+
+app.put("/api/admin/users/:id/settings", auth, managerOnly, loadTarget, wrap(async (req, res) => {
+  await writeSettings(req.target.id, req.body?.rates);
+  res.json({ ok: true });
+}));
+
+app.get("/api/admin/users/:id/meals", auth, managerOnly, loadTarget, wrap(async (req, res) => {
+  res.json(await readMonth(req.target.id, req.query.month));
+}));
+
+app.put("/api/admin/users/:id/meals", auth, managerOnly, loadTarget, wrap(async (req, res) => {
+  await writeMeal(req.target.id, req.body);
+  res.json({ ok: true });
+}));
+
+app.put("/api/admin/users/:id/day-status", auth, managerOnly, loadTarget, wrap(async (req, res) => {
+  await writeDayStatus(req.target.id, req.body);
+  res.json({ ok: true });
+}));
+
+/** Member list with this month's spend, so the panel is useful at a glance. */
+app.get("/api/admin/users", auth, managerOnly, wrap(async (req, res) => {
+  const month = String(req.query.month || "");
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "Invalid month." });
+  const start = month + "-01";
+  const everyone = req.actor.role === "superuser";
+  const { rows } = await sql`
+    select u.id, u.email, u.role,
+           to_char(u.created_at, 'YYYY-MM-DD') as created_at,
+           coalesce((
+             select sum(me.amount) from meal_entries me
+              where me.user_id = u.id and me.taken
+                and me.date >= ${start}::date and me.date < (${start}::date + interval '1 month')
+                and not exists (select 1 from day_status ds
+                                 where ds.user_id = u.id and ds.date = me.date and ds.no_meal)
+           ), 0) as meal_total,
+           coalesce((
+             select sum(ds.adjustment) from day_status ds
+              where ds.user_id = u.id and not ds.no_meal
+                and ds.date >= ${start}::date and ds.date < (${start}::date + interval '1 month')
+           ), 0) as extra_total,
+           coalesce((
+             select count(*) from meal_entries me
+              where me.user_id = u.id and me.taken
+                and me.date >= ${start}::date and me.date < (${start}::date + interval '1 month')
+                and not exists (select 1 from day_status ds
+                                 where ds.user_id = u.id and ds.date = me.date and ds.no_meal)
+           ), 0) as meals_taken,
+           (select to_char(max(me.date), 'YYYY-MM-DD') from meal_entries me where me.user_id = u.id) as last_entry
+      from users u
+     where ${everyone}::boolean or u.role = 'user'
+     order by u.email`;
+  res.json({
+    month,
+    users: rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      role: r.role,
+      createdAt: r.created_at,
+      spent: (Number(r.meal_total) || 0) + (Number(r.extra_total) || 0),
+      mealsTaken: Number(r.meals_taken) || 0,
+      lastEntry: r.last_entry,
+      isSelf: r.id === req.actor.id,
+    })),
+  });
+}));
+
+app.post("/api/admin/users", auth, managerOnly, wrap(async (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const password = String(req.body?.password || "");
+  const role = String(req.body?.role || "user");
+  if (!["user", "admin"].includes(role)) return res.status(400).json({ error: "Pick a valid role." });
+  if (role === "admin" && req.actor.role !== "superuser") {
+    return res.status(403).json({ error: "Only the superuser can add managers." });
+  }
+  if (!email.includes("@") || password.length < 6) {
+    return res.status(400).json({ error: "Enter an email and a password of at least 6 characters." });
+  }
+  const hash = await bcrypt.hash(password, 10);
+  try {
+    const { rows } = await sql`
+      insert into users (email, password_hash, role) values (${email}, ${hash}, ${role})
+      returning id, email, role, to_char(created_at, 'YYYY-MM-DD') as created_at`;
+    const u = rows[0];
+    res.json({ user: { id: u.id, email: u.email, role: u.role, createdAt: u.created_at, spent: 0, mealsTaken: 0 } });
+  } catch (e) {
+    if (e.code === "23505" || /duplicate key/i.test(e.message || "")) {
+      return res.status(409).json({ error: "That email already has an account." });
+    }
+    throw e;
+  }
+}));
+
+app.patch("/api/admin/users/:id", auth, managerOnly, superOnly, loadTarget, wrap(async (req, res) => {
+  const { target } = req;
+  if (target.email === SUPER_EMAIL) return res.status(403).json({ error: "The superuser account can't be changed here." });
+
+  const role = req.body?.role;
+  if (role !== undefined) {
+    if (!["user", "admin"].includes(String(role))) return res.status(400).json({ error: "Pick a valid role." });
+    await sql`update users set role = ${role} where id = ${target.id}`;
+    target.role = role;
+  }
+
+  const password = req.body?.password;
+  if (password !== undefined) {
+    if (String(password).length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+    const hash = await bcrypt.hash(String(password), 10);
+    await sql`update users set password_hash = ${hash} where id = ${target.id}`;
+  }
+
+  res.json({ user: { id: target.id, email: target.email, role: target.role } });
+}));
+
+app.delete("/api/admin/users/:id", auth, managerOnly, superOnly, loadTarget, wrap(async (req, res) => {
+  if (req.target.email === SUPER_EMAIL || req.target.id === req.actor.id) {
+    return res.status(403).json({ error: "You can't delete your own account." });
+  }
+  // meal_entries / day_status / settings / subscriptions all cascade.
+  await sql`delete from users where id = ${req.target.id}`;
   res.json({ ok: true });
 }));
 
@@ -265,11 +464,13 @@ app.get("/api/cron/remind", wrap(async (req, res) => {
   // Today's date in the reminder timezone.
   const dateKey = new Date(Date.now() + TZ_OFFSET_MIN * 60000).toISOString().slice(0, 10);
 
+  // Providers serve the food and log no meals of their own — never nudge them.
   const { rows } = await sql`
     select s.endpoint, s.p256dh, s.auth, s.user_id,
       (select count(*) from meal_entries me where me.user_id = s.user_id and me.date = ${dateKey}::date) as marked,
       coalesce((select no_meal from day_status ds where ds.user_id = s.user_id and ds.date = ${dateKey}::date), false) as no_meal
-    from push_subscriptions s`;
+    from push_subscriptions s
+    join users u on u.id = s.user_id and u.role <> 'admin'`;
 
   let sent = 0, removed = 0;
   for (const r of rows) {
@@ -308,6 +509,7 @@ if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
 
 // ---- Error handler ----
 app.use((err, req, res, next) => {
+  if (err instanceof Bad) return res.status(err.status).json({ error: err.message });
   console.error(err);
   res.status(500).json({ error: "Server error." });
 });

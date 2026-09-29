@@ -8,6 +8,11 @@ const isPlaceholder = (u) => !u || u.includes("USER:PASSWORD") || u.includes("ep
 
 export const isConfigured = !isPlaceholder(url);
 
+// The one account that can never be locked out: it owns roles and members.
+export const SUPER_EMAIL = (process.env.SUPERUSER_EMAIL || "mani18012003@gmail.com")
+  .trim()
+  .toLowerCase();
+
 // Tagged-template query fn. With fullResults, `await sql\`...\`` returns { rows, rowCount, ... }.
 export const sql = isConfigured ? neon(url, { fullResults: true }) : null;
 
@@ -22,6 +27,11 @@ export async function initSchema() {
   )`;
   await sql`alter table users alter column password_hash drop not null`;
   await sql`alter table users add column if not exists google_sub text`;
+  // 'user' = own meals only · 'admin' = read/write every normal member · 'superuser' = also manages members.
+  await sql`alter table users add column if not exists role text not null default 'user'`;
+  if (SUPER_EMAIL) {
+    await sql`update users set role = 'superuser' where email = ${SUPER_EMAIL} and role <> 'superuser'`;
+  }
   await sql`create table if not exists user_settings (
     user_id    uuid primary key references users(id) on delete cascade,
     rates      jsonb not null,

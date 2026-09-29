@@ -39,10 +39,14 @@ Open the **`.env`** file in this folder and fill in:
 NEON_DATABASE_URL=postgresql://...POOLED connection string...
 NEON_DATABASE_URL_UNPOOLED=postgresql://...DIRECT connection string...
 JWT_SECRET=some-long-random-string-you-make-up
+SUPERUSER_EMAIL=mani18012003@gmail.com
 PORT=3001
 ```
 
 - `JWT_SECRET` — any long random string; it signs login tokens.
+- `SUPERUSER_EMAIL` — the one account that manages members: it can add people,
+  grant or revoke the manager role, reset passwords, and read/edit anyone's daily
+  entries. The role is applied automatically however that address signs in.
 - The database **tables are created automatically** the first time the server
   starts — there is no SQL to run by hand.
 
